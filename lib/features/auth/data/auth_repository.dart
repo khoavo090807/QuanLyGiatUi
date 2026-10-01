@@ -116,7 +116,7 @@ class AuthRepository {
   Future<void> requestPasswordReset(String email) async {
     await _client.auth.resetPasswordForEmail(
       email.trim(),
-      redirectTo: kIsWeb ? null : passwordRecoveryRedirectTo,
+      redirectTo: kIsWeb ? Uri.base.origin : passwordRecoveryRedirectTo,
     );
   }
 

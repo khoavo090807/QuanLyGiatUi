@@ -182,18 +182,25 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
             );
           }
 
-          final prices = snapshot.data!.prices;
+          final allPrices = snapshot.data!.prices;
           final addresses = snapshot.data!.addresses;
-          if (prices.isEmpty) {
+          if (allPrices.isEmpty) {
             return const Center(child: Text('Hiện chưa có bảng giá khả dụng.'));
           }
 
           final selectedPriceId =
               _selectedPrice?.priceId ?? widget.initialPriceId;
-          _selectedPrice = prices.firstWhere(
+          _selectedPrice = allPrices.firstWhere(
             (price) => price.priceId == selectedPriceId,
-            orElse: () => prices.first,
+            orElse: () => allPrices.first,
           );
+          
+          // Filter prices to same service if initialPriceId was provided
+          final prices = widget.initialPriceId != null
+              ? allPrices
+                  .where((price) => price.serviceId == _selectedPrice!.serviceId)
+                  .toList(growable: false)
+              : allPrices;
           final selectedAddressId = _selectedAddress?.id;
           if (selectedAddressId != null) {
             _selectedAddress = addresses
@@ -217,9 +224,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                 Text('Dịch vụ và loại đồ', style: AppTypography.heading2),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<int>(
-                  key: ValueKey(
-                    prices.map((price) => price.priceId).join(','),
-                  ),
+                  key: ValueKey(prices.map((price) => price.priceId).join(',')),
                   initialValue: _selectedPrice!.priceId,
                   isExpanded: true,
                   decoration: const InputDecoration(
@@ -331,7 +336,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                         return DropdownMenuItem(
                           value: address.id,
                           child: Text(
-                            '${address.recipient} · ${address.address}',
+                            address.address,
                             overflow: TextOverflow.ellipsis,
                           ),
                         );
@@ -381,9 +386,8 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                       ),
                       trailing: IconButton(
                         tooltip: 'Bỏ chọn vị trí hiện tại',
-                        onPressed: () => setState(
-                          () => _currentPickupLocation = null,
-                        ),
+                        onPressed: () =>
+                            setState(() => _currentPickupLocation = null),
                         icon: const Icon(Icons.close),
                       ),
                     ),

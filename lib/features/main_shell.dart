@@ -19,6 +19,7 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   final _authRepository = AuthRepository();
+  final _unreadNotificationCount = ValueNotifier<int>(0);
   late Future<List<String>> _rolesFuture;
   late int _selectedIndex;
 
@@ -29,9 +30,14 @@ class _MainShellState extends State<MainShell> {
     _rolesFuture = _authRepository.getCurrentRoles();
   }
 
-  bool _hasStaffRole(List<String> roles) => roles.any(
-        {'Nhân viên', 'Quản lý', 'Chủ cửa hàng'}.contains,
-      );
+  @override
+  void dispose() {
+    _unreadNotificationCount.dispose();
+    super.dispose();
+  }
+
+  bool _hasStaffRole(List<String> roles) =>
+      roles.any({'Nhân viên', 'Quản lý', 'Chủ cửa hàng'}.contains);
 
   @override
   Widget build(BuildContext context) {
@@ -45,28 +51,38 @@ class _MainShellState extends State<MainShell> {
             : (_selectedIndex.clamp(0, 3));
 
         final screens = isStaff
-            ? const [
-                StaffOrderQueueScreen(),
-                NotificationScreen(),
-                ProfileScreen(),
+            ? [
+                const StaffOrderQueueScreen(),
+                NotificationScreen(
+                  unreadNotificationCount: _unreadNotificationCount,
+                ),
+                const ProfileScreen(),
               ]
-            : const [
-                HomeScreen(),
-                HistoryScreen(),
-                NotificationScreen(),
-                ProfileScreen(),
+            : [
+                HomeScreen(unreadNotificationCount: _unreadNotificationCount),
+                const HistoryScreen(),
+                NotificationScreen(
+                  unreadNotificationCount: _unreadNotificationCount,
+                ),
+                const ProfileScreen(),
               ];
 
         final destinations = isStaff
             ? const [
                 NavigationDestination(
                   icon: Icon(Icons.fact_check_outlined),
-                  selectedIcon: Icon(Icons.fact_check, color: AppColors.primary),
+                  selectedIcon: Icon(
+                    Icons.fact_check,
+                    color: AppColors.primary,
+                  ),
                   label: 'Đơn hàng',
                 ),
                 NavigationDestination(
                   icon: Icon(Icons.notifications_outlined),
-                  selectedIcon: Icon(Icons.notifications, color: AppColors.primary),
+                  selectedIcon: Icon(
+                    Icons.notifications,
+                    color: AppColors.primary,
+                  ),
                   label: AppStrings.notifications,
                 ),
                 NavigationDestination(
@@ -83,12 +99,18 @@ class _MainShellState extends State<MainShell> {
                 ),
                 NavigationDestination(
                   icon: Icon(Icons.receipt_long_outlined),
-                  selectedIcon: Icon(Icons.receipt_long, color: AppColors.primary),
+                  selectedIcon: Icon(
+                    Icons.receipt_long,
+                    color: AppColors.primary,
+                  ),
                   label: AppStrings.history,
                 ),
                 NavigationDestination(
                   icon: Icon(Icons.notifications_outlined),
-                  selectedIcon: Icon(Icons.notifications, color: AppColors.primary),
+                  selectedIcon: Icon(
+                    Icons.notifications,
+                    color: AppColors.primary,
+                  ),
                   label: AppStrings.notifications,
                 ),
                 NavigationDestination(
@@ -99,10 +121,7 @@ class _MainShellState extends State<MainShell> {
               ];
 
         return Scaffold(
-          body: IndexedStack(
-            index: selectedIndex,
-            children: screens,
-          ),
+          body: IndexedStack(index: selectedIndex, children: screens),
           bottomNavigationBar: Container(
             decoration: BoxDecoration(
               color: AppColors.surface,

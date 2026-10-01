@@ -80,6 +80,38 @@ class _HistoryScreenState extends State<HistoryScreen>
     }
   }
 
+  Future<void> _showBookingDetails(LaundryOrderRecord booking) async {
+    final created = booking.createdAt.toLocal();
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Chi tiết ${booking.orderNumber}'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _StatusPill(status: booking.status),
+            const SizedBox(height: 16),
+            Text(booking.lineDescription),
+            const SizedBox(height: 12),
+            Text(
+              'Ngày tạo: ${created.day.toString().padLeft(2, '0')}/'
+              '${created.month.toString().padLeft(2, '0')}/${created.year}',
+            ),
+            const SizedBox(height: 8),
+            Text('Tạm tính: ${booking.totalVnd.toStringAsFixed(0)} đ'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Đóng'),
+          ),
+        ],
+      ),
+    );
+  }
+
   bool _isCancelled(LaundryOrderRecord order) => order.status == 'Đã hủy';
 
   bool _isCompleted(LaundryOrderRecord order) =>
@@ -158,6 +190,19 @@ class _HistoryScreenState extends State<HistoryScreen>
                             const SizedBox(height: 10),
                         itemBuilder: (context, index) => _OrderCard(
                           order: filtered[index],
+                          onViewDetails: () {
+                            final order = filtered[index];
+                            if (order.orderId == null) {
+                              _showBookingDetails(order);
+                            } else {
+                              context.pushNamed(
+                                AppRoutes.trackingDetail,
+                                pathParameters: {
+                                  'id': order.orderId.toString(),
+                                },
+                              );
+                            }
+                          },
                           onRequestPayment: filtered[index].orderId == null
                               ? null
                               : () => context.pushNamed(
@@ -183,11 +228,13 @@ class _HistoryScreenState extends State<HistoryScreen>
 class _OrderCard extends StatelessWidget {
   const _OrderCard({
     required this.order,
+    required this.onViewDetails,
     required this.onRequestPayment,
     required this.onCancelBooking,
   });
 
   final LaundryOrderRecord order;
+  final VoidCallback onViewDetails;
   final VoidCallback? onRequestPayment;
   final VoidCallback? onCancelBooking;
 
@@ -199,12 +246,7 @@ class _OrderCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(8),
       child: InkWell(
         borderRadius: BorderRadius.circular(8),
-        onTap: order.orderId == null
-            ? null
-            : () => context.pushNamed(
-                AppRoutes.trackingDetail,
-                pathParameters: {'id': order.orderId.toString()},
-              ),
+        onTap: onViewDetails,
         child: Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(

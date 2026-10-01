@@ -37,8 +37,6 @@ class _AddressBookScreenState extends State<AddressBookScreen> {
 
   Future<void> _openEditor([CustomerAddress? address]) async {
     final formKey = GlobalKey<FormState>();
-    final recipient = TextEditingController(text: address?.recipient ?? '');
-    final phone = TextEditingController(text: address?.phone ?? '');
     final location = TextEditingController(text: address?.address ?? '');
     final note = TextEditingController(text: address?.note ?? '');
     var isDefault = address?.isDefault ?? false;
@@ -46,160 +44,150 @@ class _AddressBookScreenState extends State<AddressBookScreen> {
 
     await showDialog<void>(
       context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: Text(address == null ? 'Thêm địa chỉ' : 'Sửa địa chỉ'),
-          content: Form(
-            key: formKey,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextFormField(
-                    controller: recipient,
-                    decoration: const InputDecoration(labelText: 'Người nhận'),
-                    validator: _required,
-                  ),
-                  TextFormField(
-                    controller: phone,
-                    keyboardType: TextInputType.phone,
-                    decoration: const InputDecoration(
-                      labelText: 'Số điện thoại',
+      builder: (dialogContext) => _AddressDialogControllerOwner(
+        controllers: [location, note],
+        child: StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: Text(address == null ? 'Thêm địa chỉ' : 'Sửa địa chỉ'),
+            content: Form(
+              key: formKey,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextFormField(
+                      controller: location,
+                      maxLines: 2,
+                      decoration: const InputDecoration(labelText: 'Địa chỉ'),
+                      validator: _required,
                     ),
-                    validator: _required,
-                  ),
-                  TextFormField(
-                    controller: location,
-                    maxLines: 2,
-                    decoration: const InputDecoration(labelText: 'Địa chỉ'),
-                    validator: _required,
-                  ),
-                  TextButton.icon(
-                    onPressed: isGettingLocation
-                        ? null
-                        : () async {
-                            final messenger = ScaffoldMessenger.of(
-                              this.context,
-                            );
-                            setDialogState(() => isGettingLocation = true);
-                            try {
-                                final currentAddress = (await _currentLocationService
-                                    .getCurrentAddress())
-                                  .address;
-                              if (dialogContext.mounted) {
-                                location.text = currentAddress;
+                    TextButton.icon(
+                      onPressed: isGettingLocation
+                          ? null
+                          : () async {
+                              final messenger = ScaffoldMessenger.of(
+                                this.context,
+                              );
+                              setDialogState(() => isGettingLocation = true);
+                              try {
+                                final currentAddress =
+                                    (await _currentLocationService
+                                            .getCurrentAddress())
+                                        .address;
+                                if (dialogContext.mounted) {
+                                  location.text = currentAddress;
+                                }
+                              } catch (error) {
+                                if (dialogContext.mounted && mounted) {
+                                  final message =
+                                      error is CurrentLocationException
+                                      ? error.message
+                                      : 'Không lấy được địa chỉ hiện tại.';
+                                  messenger.showSnackBar(
+                                    SnackBar(content: Text(message)),
+                                  );
+                                }
+                              } finally {
+                                if (dialogContext.mounted) {
+                                  setDialogState(
+                                    () => isGettingLocation = false,
+                                  );
+                                }
                               }
-                            } catch (error) {
-                              if (dialogContext.mounted && mounted) {
-                                final message =
-                                    error is CurrentLocationException
-                                    ? error.message
-                                    : 'Không lấy được địa chỉ hiện tại.';
-                                messenger.showSnackBar(
-                                  SnackBar(content: Text(message)),
-                                );
-                              }
-                            } finally {
-                              if (dialogContext.mounted) {
-                                setDialogState(() => isGettingLocation = false);
-                              }
-                            }
-                          },
-                    icon: isGettingLocation
-                        ? const SizedBox.square(
-                            dimension: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.my_location),
-                    label: Text(
-                      isGettingLocation
-                          ? 'Đang lấy vị trí...'
-                          : 'Điền vị trí hiện tại',
+                            },
+                      icon: isGettingLocation
+                          ? const SizedBox.square(
+                              dimension: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.my_location),
+                      label: Text(
+                        isGettingLocation
+                            ? 'Đang lấy vị trí...'
+                            : 'Điền vị trí hiện tại',
+                      ),
                     ),
-                  ),
-                  TextFormField(
-                    controller: note,
-                    decoration: const InputDecoration(labelText: 'Ghi chú'),
-                  ),
-                  CheckboxListTile(
-                    contentPadding: EdgeInsets.zero,
-                    value: isDefault,
-                    title: const Text('Địa chỉ mặc định'),
-                    controlAffinity: ListTileControlAffinity.leading,
-                    onChanged: (value) =>
-                        setDialogState(() => isDefault = value ?? false),
-                  ),
-                ],
+                    TextFormField(
+                      controller: note,
+                      decoration: const InputDecoration(labelText: 'Ghi chú'),
+                    ),
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      value: isDefault,
+                      title: const Text('Địa chỉ mặc định'),
+                      controlAffinity: ListTileControlAffinity.leading,
+                      onChanged: (value) =>
+                          setDialogState(() => isDefault = value ?? false),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Hủy'),
-            ),
-            FilledButton(
-              onPressed: _isSaving || _deletingAddressId != null
-                  ? null
-                  : () async {
-                      final messenger = ScaffoldMessenger.of(this.context);
-                      if (!(formKey.currentState?.validate() ?? false)) return;
-                      setState(() => _isSaving = true);
-                      try {
-                        await _repository
-                            .saveAddress(
-                              id: address?.id,
-                              recipient: recipient.text.trim(),
-                              phone: phone.text.trim(),
-                              address: location.text.trim(),
-                              note: note.text.trim().isEmpty
-                                  ? null
-                                  : note.text.trim(),
-                              isDefault: isDefault,
-                            )
-                            .timeout(const Duration(seconds: 15));
-                        if (dialogContext.mounted) Navigator.pop(dialogContext);
-                        if (mounted) {
-                          try {
-                            await _reload();
-                          } catch (_) {
-                            messenger.showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'Đã lưu địa chỉ nhưng chưa tải lại được danh sách.',
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Hủy'),
+              ),
+              FilledButton(
+                onPressed: _isSaving || _deletingAddressId != null
+                    ? null
+                    : () async {
+                        final messenger = ScaffoldMessenger.of(this.context);
+                        if (!(formKey.currentState?.validate() ?? false)) {
+                          return;
+                        }
+                        setState(() => _isSaving = true);
+                        try {
+                          await _repository
+                              .saveAddress(
+                                id: address?.id,
+                                address: location.text.trim(),
+                                note: note.text.trim().isEmpty
+                                    ? null
+                                    : note.text.trim(),
+                                isDefault: isDefault,
+                              )
+                              .timeout(const Duration(seconds: 15));
+                          if (dialogContext.mounted) {
+                            Navigator.pop(dialogContext);
+                          }
+                          if (mounted) {
+                            try {
+                              await _reload();
+                            } catch (_) {
+                              messenger.showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Đã lưu địa chỉ nhưng chưa tải lại được danh sách.',
+                                  ),
                                 ),
+                              );
+                            }
+                          }
+                        } catch (error) {
+                          if (mounted) {
+                            messenger.showSnackBar(
+                              SnackBar(
+                                content: Text('Không lưu được địa chỉ: $error'),
                               ),
                             );
                           }
+                        } finally {
+                          if (mounted) setState(() => _isSaving = false);
                         }
-                      } catch (error) {
-                        if (mounted) {
-                          messenger.showSnackBar(
-                            SnackBar(
-                              content: Text('Không lưu được địa chỉ: $error'),
-                            ),
-                          );
-                        }
-                      } finally {
-                        if (mounted) setState(() => _isSaving = false);
-                      }
-                    },
-              child: _isSaving
-                  ? const SizedBox.square(
-                      dimension: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Lưu'),
-            ),
-          ],
+                      },
+                child: _isSaving
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Lưu'),
+              ),
+            ],
+          ),
         ),
       ),
     );
-
-    recipient.dispose();
-    phone.dispose();
-    location.dispose();
-    note.dispose();
   }
 
   String? _required(String? value) =>
@@ -291,7 +279,7 @@ class _AddressBookScreenState extends State<AddressBookScreen> {
                         children: [
                           Expanded(
                             child: Text(
-                              address.recipient,
+                              address.address,
                               style: AppTypography.title,
                             ),
                           ),
@@ -322,9 +310,6 @@ class _AddressBookScreenState extends State<AddressBookScreen> {
                             ),
                         ],
                       ),
-                      Text(address.phone, style: AppTypography.bodySmall),
-                      const SizedBox(height: 6),
-                      Text(address.address),
                       if (address.note != null && address.note!.isNotEmpty) ...[
                         const SizedBox(height: 4),
                         Text(
@@ -344,4 +329,32 @@ class _AddressBookScreenState extends State<AddressBookScreen> {
       ),
     );
   }
+}
+
+class _AddressDialogControllerOwner extends StatefulWidget {
+  const _AddressDialogControllerOwner({
+    required this.controllers,
+    required this.child,
+  });
+
+  final List<TextEditingController> controllers;
+  final Widget child;
+
+  @override
+  State<_AddressDialogControllerOwner> createState() =>
+      _AddressDialogControllerOwnerState();
+}
+
+class _AddressDialogControllerOwnerState
+    extends State<_AddressDialogControllerOwner> {
+  @override
+  void dispose() {
+    for (final controller in widget.controllers) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }

@@ -6,10 +6,13 @@ import 'package:app_quanly_giaiui/core/theme/app_typography.dart';
 import 'package:app_quanly_giaiui/core/widgets/section_header.dart';
 import 'package:app_quanly_giaiui/core/navigation/app_routes.dart';
 import 'package:app_quanly_giaiui/features/auth/data/auth_repository.dart';
+import 'package:app_quanly_giaiui/features/notification/data/notification_repository.dart';
 import 'package:app_quanly_giaiui/features/order/data/order_repository.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({required this.unreadNotificationCount, super.key});
+
+  final ValueNotifier<int> unreadNotificationCount;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -18,6 +21,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final _repository = OrderRepository();
   final _authRepository = AuthRepository();
+  final _notificationRepository = NotificationRepository();
   late Future<_HomeData> _homeData;
 
   @override
@@ -40,6 +44,12 @@ class _HomeScreenState extends State<HomeScreen> {
       roles = await _authRepository.getCurrentRoles();
     } catch (_) {
       // Missing account/role data should not block the customer UI.
+    }
+    try {
+      final unreadCount = await _notificationRepository.getUnreadCount();
+      if (mounted) widget.unreadNotificationCount.value = unreadCount;
+    } catch (_) {
+      if (mounted) widget.unreadNotificationCount.value = 0;
     }
 
     return _HomeData(prices: prices, orders: orders, roles: roles);
@@ -147,13 +157,18 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
           ),
-          // Notification Icon
-          IconButton(
-            onPressed: () => context.goNamed(AppRoutes.notifications),
-            icon: Badge(
-              smallSize: 8,
-              child: const Icon(Icons.notifications_outlined),
+          ValueListenableBuilder<int>(
+            valueListenable: widget.unreadNotificationCount,
+            builder: (context, unreadCount, child) => IconButton(
+              tooltip: AppStrings.notifications,
+              onPressed: () => context.goNamed(AppRoutes.notifications),
+              icon: Badge(
+                isLabelVisible: unreadCount > 0,
+                smallSize: 8,
+                child: child,
+              ),
             ),
+            child: const Icon(Icons.notifications_outlined),
           ),
         ],
       ),
