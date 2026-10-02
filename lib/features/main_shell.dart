@@ -22,12 +22,21 @@ class _MainShellState extends State<MainShell> {
   final _unreadNotificationCount = ValueNotifier<int>(0);
   late Future<List<String>> _rolesFuture;
   late int _selectedIndex;
+  void Function(bool)? _setHistoryVisibility;
 
   @override
   void initState() {
     super.initState();
     _selectedIndex = widget.initialIndex;
     _rolesFuture = _authRepository.getCurrentRoles();
+  }
+
+  @override
+  void didUpdateWidget(covariant MainShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialIndex != oldWidget.initialIndex) {
+      _selectedIndex = widget.initialIndex;
+    }
   }
 
   @override
@@ -38,6 +47,16 @@ class _MainShellState extends State<MainShell> {
 
   bool _hasStaffRole(List<String> roles) =>
       roles.any({'Nhân viên', 'Quản lý', 'Chủ cửa hàng'}.contains);
+
+  void _onDestinationSelected(int index, bool isStaff) {
+    setState(() => _selectedIndex = index);
+    
+    // Notify HistoryScreen about visibility change
+    if (!isStaff) {
+      final isHistoryVisible = index == 1;
+      _setHistoryVisibility?.call(isHistoryVisible);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -60,7 +79,11 @@ class _MainShellState extends State<MainShell> {
               ]
             : [
                 HomeScreen(unreadNotificationCount: _unreadNotificationCount),
-                const HistoryScreen(),
+                HistoryScreen(
+                  onVisibilityChanged: (setVisibility) {
+                    _setHistoryVisibility = setVisibility;
+                  },
+                ),
                 NotificationScreen(
                   unreadNotificationCount: _unreadNotificationCount,
                 ),
@@ -136,9 +159,7 @@ class _MainShellState extends State<MainShell> {
             child: SafeArea(
               child: NavigationBar(
                 selectedIndex: selectedIndex,
-                onDestinationSelected: (index) {
-                  setState(() => _selectedIndex = index);
-                },
+                onDestinationSelected: (index) => _onDestinationSelected(index, isStaff),
                 backgroundColor: AppColors.surface,
                 indicatorColor: AppColors.primaryLight,
                 destinations: destinations,

@@ -5,9 +5,15 @@ import 'package:app_quanly_giaiui/core/widgets/status_badge.dart';
 import 'package:app_quanly_giaiui/features/order/data/order_repository.dart';
 
 class TrackingScreen extends StatefulWidget {
-  const TrackingScreen({required this.orderId, super.key});
+  const TrackingScreen({
+    this.orderId,
+    this.bookingId,
+    super.key,
+  }) : assert(orderId != null || bookingId != null,
+      'Either orderId or bookingId must be provided');
 
-  final String orderId;
+  final String? orderId;
+  final String? bookingId;
 
   @override
   State<TrackingScreen> createState() => _TrackingScreenState();
@@ -24,9 +30,16 @@ class _TrackingScreenState extends State<TrackingScreen> {
   }
 
   Future<LaundryOrderDetails> _loadDetails() {
-    final id = int.tryParse(widget.orderId);
-    if (id == null) throw const FormatException('Mã đơn không hợp lệ.');
-    return _repository.getOrderDetails(id);
+    if (widget.orderId != null) {
+      final id = int.tryParse(widget.orderId!);
+      if (id == null) throw const FormatException('Mã đơn không hợp lệ.');
+      return _repository.getOrderDetails(id);
+    } else if (widget.bookingId != null) {
+      final id = int.tryParse(widget.bookingId!);
+      if (id == null) throw const FormatException('Mã yêu cầu không hợp lệ.');
+      return _repository.getBookingDetails(id);
+    }
+    throw const FormatException('Mã đơn hoặc yêu cầu không hợp lệ.');
   }
 
   String _formatDateTime(DateTime value) {
@@ -40,7 +53,13 @@ class _TrackingScreenState extends State<TrackingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Theo dõi đơn #${widget.orderId}')),
+      appBar: AppBar(
+        title: Text(
+          widget.orderId != null
+              ? 'Theo dõi đơn #${widget.orderId}'
+              : 'Chi tiết yêu cầu #${widget.bookingId}',
+        ),
+      ),
       body: FutureBuilder<LaundryOrderDetails>(
         future: _detailsFuture,
         builder: (context, snapshot) {

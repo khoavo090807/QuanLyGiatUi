@@ -61,7 +61,10 @@ class _StaffOrderQueueScreenState extends State<StaffOrderQueueScreen> {
     setState(() => _isUpdating = true);
     try {
       if (order.orderId == null && order.bookingId != null) {
-        await _orderRepository.confirmBooking(order.bookingId!);
+        await _orderRepository.confirmBooking(
+          order.bookingId!,
+          hasDetails: order.hasLaundryDetails,
+        );
       } else if (order.orderId != null) {
         await _orderRepository.transitionStatus(
           orderId: order.orderId!,

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:app_quanly_giaiui/core/constants/app_strings.dart';
@@ -8,38 +10,77 @@ import 'package:app_quanly_giaiui/core/widgets/status_badge.dart';
 import 'package:app_quanly_giaiui/features/order/data/order_repository.dart';
 
 class HistoryScreen extends StatefulWidget {
-  const HistoryScreen({super.key});
+  const HistoryScreen({super.key, this.onVisibilityChanged});
+
+  final void Function(void Function(bool))? onVisibilityChanged;
 
   @override
   State<HistoryScreen> createState() => _HistoryScreenState();
 }
 
 class _HistoryScreenState extends State<HistoryScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver, AutomaticKeepAliveClientMixin {
   late final TabController _tabController;
   final _repository = OrderRepository();
   late Future<List<LaundryOrderRecord>> _ordersFuture;
   bool _isCancelling = false;
+  Timer? _autoRefreshTimer;
+  bool _isVisible = true;
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _tabController = TabController(length: 3, vsync: this);
-    _ordersFuture = _repository.getCustomerHistory();
+    _loadHistory();
+    _startAutoRefresh();
+    widget.onVisibilityChanged?.call(setVisibility);
+  }
+
+  void _startAutoRefresh() {
+    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (_isVisible && mounted) {
+        _loadHistory();
+      }
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _isVisible) {
+      _loadHistory();
+    }
+  }
+
+  void setVisibility(bool visible) {
+    _isVisible = visible;
+    if (visible && mounted) {
+      _loadHistory();
+    }
+  }
+
+  void _loadHistory() {
+    setState(() {
+      _ordersFuture = _repository.getCustomerHistory();
+    });
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _autoRefreshTimer?.cancel();
     _tabController.dispose();
     super.dispose();
   }
 
   Future<void> _refresh() async {
-    final future = _repository.getCustomerHistory();
     setState(() {
-      _ordersFuture = future;
+      _ordersFuture = _repository.getCustomerHistory();
     });
-    await future;
+    await _ordersFuture;
   }
 
   Future<void> _cancelBooking(LaundryOrderRecord booking) async {
@@ -80,38 +121,6 @@ class _HistoryScreenState extends State<HistoryScreen>
     }
   }
 
-  Future<void> _showBookingDetails(LaundryOrderRecord booking) async {
-    final created = booking.createdAt.toLocal();
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text('Chi tiết ${booking.orderNumber}'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _StatusPill(status: booking.status),
-            const SizedBox(height: 16),
-            Text(booking.lineDescription),
-            const SizedBox(height: 12),
-            Text(
-              'Ngày tạo: ${created.day.toString().padLeft(2, '0')}/'
-              '${created.month.toString().padLeft(2, '0')}/${created.year}',
-            ),
-            const SizedBox(height: 8),
-            Text('Tạm tính: ${booking.totalVnd.toStringAsFixed(0)} đ'),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Đóng'),
-          ),
-        ],
-      ),
-    );
-  }
-
   bool _isCancelled(LaundryOrderRecord order) => order.status == 'Đã hủy';
 
   bool _isCompleted(LaundryOrderRecord order) =>
@@ -129,6 +138,7 @@ class _HistoryScreenState extends State<HistoryScreen>
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     return Scaffold(
       appBar: AppBar(
         title: const Text(AppStrings.orderHistory),
@@ -192,13 +202,18 @@ class _HistoryScreenState extends State<HistoryScreen>
                           order: filtered[index],
                           onViewDetails: () {
                             final order = filtered[index];
-                            if (order.orderId == null) {
-                              _showBookingDetails(order);
-                            } else {
+                            if (order.orderId != null) {
                               context.pushNamed(
                                 AppRoutes.trackingDetail,
                                 pathParameters: {
                                   'id': order.orderId.toString(),
+                                },
+                              );
+                            } else if (order.bookingId != null) {
+                              context.pushNamed(
+                                AppRoutes.trackingDetail,
+                                pathParameters: {
+                                  'id': 'booking_${order.bookingId}',
                                 },
                               );
                             }

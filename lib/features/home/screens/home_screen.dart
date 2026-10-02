@@ -161,7 +161,7 @@ class _HomeScreenState extends State<HomeScreen> {
             valueListenable: widget.unreadNotificationCount,
             builder: (context, unreadCount, child) => IconButton(
               tooltip: AppStrings.notifications,
-              onPressed: () => context.goNamed(AppRoutes.notifications),
+              onPressed: () => context.go(AppRoutes.notificationsPath),
               icon: Badge(
                 isLabelVisible: unreadCount > 0,
                 smallSize: 8,

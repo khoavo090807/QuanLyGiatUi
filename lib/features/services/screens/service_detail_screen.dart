@@ -28,6 +28,22 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     context.pushNamed(AppRoutes.createOrder, extra: priceId);
   }
 
+  IconData _serviceIcon(String name) {
+    final normalized = name.toLowerCase();
+    if (normalized.contains('khô')) return Icons.dry_cleaning_outlined;
+    if (normalized.contains('sấy')) return Icons.air_outlined;
+    if (normalized.contains('ủi')) return Icons.iron_outlined;
+    return Icons.water_drop_outlined;
+  }
+
+  Color _serviceColor(String name) {
+    final normalized = name.toLowerCase();
+    if (normalized.contains('khô')) return AppColors.secondary;
+    if (normalized.contains('sấy')) return AppColors.warning;
+    if (normalized.contains('ủi')) return AppColors.success;
+    return AppColors.info;
+  }
+
   @override
   Widget build(BuildContext context) {
     final serviceId = int.tryParse(widget.serviceId);
@@ -58,6 +74,8 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
           }
 
           final serviceName = prices.first.serviceName;
+          final svcColor = _serviceColor(serviceName);
+
           return CustomScrollView(
             slivers: [
               SliverAppBar(
@@ -66,12 +84,12 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                 title: Text(serviceName),
                 flexibleSpace: FlexibleSpaceBar(
                   background: Container(
-                    color: AppColors.infoLight,
-                    child: const Center(
+                    color: svcColor.withValues(alpha: 0.1),
+                    child: Center(
                       child: Icon(
-                        Icons.local_laundry_service_outlined,
+                        _serviceIcon(serviceName),
                         size: 88,
-                        color: AppColors.info,
+                        color: svcColor,
                       ),
                     ),
                   ),
@@ -92,13 +110,67 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                     const SizedBox(height: 24),
                     Text('Bảng giá', style: AppTypography.heading3),
                     const SizedBox(height: 10),
-                    ...prices.map(
-                      (price) => _PriceRow(
-                        price: price,
-                        onSelect: () => _startOrder(price.priceId),
+                    Table(
+                      border: TableBorder.all(
+                        color: AppColors.border,
+                        borderRadius: BorderRadius.circular(8),
                       ),
+                      columnWidths: const {
+                        0: FlexColumnWidth(2),
+                        1: FlexColumnWidth(3),
+                      },
+                      children: [
+                        TableRow(
+                          decoration: const BoxDecoration(
+                            color: AppColors.background,
+                            borderRadius: BorderRadius.vertical(
+                              top: Radius.circular(8),
+                            ),
+                          ),
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Text(
+                                'Loại đồ',
+                                style: AppTypography.bodyText.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Text(
+                                'Đơn giá',
+                                style: AppTypography.bodyText.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        ...prices.map(
+                          (price) => TableRow(
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Text(
+                                  price.itemTypeName,
+                                  style: AppTypography.bodyText,
+                                ),
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Text(
+                                  '${price.unitPriceVnd.toStringAsFixed(0)} đ / ${price.unitSymbol}',
+                                  style: AppTypography.bodyText,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 24),
                     Text('Quy trình xử lý', style: AppTypography.heading3),
                     const SizedBox(height: 10),
                     const _ProcessStep(
@@ -147,29 +219,6 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
             ),
           );
         },
-      ),
-    );
-  }
-}
-
-class _PriceRow extends StatelessWidget {
-  const _PriceRow({required this.price, required this.onSelect});
-
-  final LaundryPriceOption price;
-  final VoidCallback onSelect;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-      title: Text(price.itemTypeName),
-      subtitle: Text(
-        '${price.unitPriceVnd.toStringAsFixed(0)} đ / ${price.unitSymbol}',
-      ),
-      trailing: IconButton(
-        onPressed: onSelect,
-        tooltip: 'Chọn ${price.itemTypeName}',
-        icon: const Icon(Icons.add_circle_outline),
       ),
     );
   }

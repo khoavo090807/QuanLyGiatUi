@@ -5,7 +5,7 @@ import 'package:app_quanly_giaiui/core/navigation/app_routes.dart';
 import 'package:app_quanly_giaiui/core/theme/app_colors.dart';
 import 'package:app_quanly_giaiui/core/theme/app_typography.dart';
 import 'package:app_quanly_giaiui/features/order/data/order_repository.dart';
-import 'package:app_quanly_giaiui/features/order/domain/laundry_order_pricing.dart';
+import 'package:app_quanly_giaiui/features/order/domain/cart_item.dart';
 
 class OrderSummaryScreen extends StatefulWidget {
   const OrderSummaryScreen({required this.draft, super.key});
@@ -23,22 +23,17 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   String? _errorMessage;
   CreatedLaundryBooking? _createdBooking;
 
-  LaundryPriceOption get _price => widget.draft['price'] as LaundryPriceOption;
-  num get _measurement => widget.draft['measurement'] as num;
+  List<CartItem> get _cart =>
+      List<CartItem>.from(widget.draft['cart'] as List<dynamic>);
+  bool get _provideLaundryDetails =>
+      widget.draft['provideLaundryDetails'] as bool? ?? true;
   String get _pickupMethod => widget.draft['pickupMethod'] as String;
   String? get _address => widget.draft['address'] as String?;
   DateTime get _appointment => widget.draft['appointment'] as DateTime;
   String get _notes => widget.draft['notes'] as String? ?? '';
 
-  int get _estimatedTotalMinorUnits => LaundryOrderPricing.lineTotalMinorUnits(
-    unitPriceVnd: _price.unitPriceVnd,
-    quantity: _isWeightBased ? null : _measurement,
-    weightKg: _isWeightBased ? _measurement : null,
-  );
-
-  bool get _isWeightBased =>
-      _price.unitSymbol.toLowerCase() == 'kg' ||
-      _price.unitSymbol.toLowerCase() == 'kilogram';
+  int get _estimatedTotalMinorUnits =>
+      _cart.fold(0, (total, item) => total + item.estimatedTotalMinorUnits);
 
   Future<void> _submitOrder() async {
     setState(() {
@@ -47,15 +42,22 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     });
 
     try {
-      final booking = await _repository.submitOrder(
-        priceId: _price.priceId,
-        measurement: _measurement,
-        pickupMethod: _pickupMethod,
-        address: _address,
-        appointment: _appointment,
-        notes: _notes,
-        idempotencyKey: _idempotencyKey,
-      );
+      final booking = _provideLaundryDetails
+          ? await _repository.submitCartOrder(
+              items: _cart,
+              pickupMethod: _pickupMethod,
+              address: _address,
+              appointment: _appointment,
+              notes: _notes,
+              idempotencyKey: _idempotencyKey,
+            )
+          : await _repository.submitBookingWithoutDetails(
+              pickupMethod: _pickupMethod,
+              address: _address,
+              appointment: _appointment,
+              notes: _notes,
+              idempotencyKey: _idempotencyKey,
+            );
       if (mounted) setState(() => _createdBooking = booking);
     } catch (error) {
       if (mounted) setState(() => _errorMessage = _messageFor(error));
@@ -108,22 +110,32 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
             const SizedBox(height: 24),
           ],
           _SummarySection(
-            title: 'Dịch vụ',
-            children: [
-              _SummaryRow(
-                label: 'Dịch vụ',
-                value: '${_price.serviceName} · ${_price.itemTypeName}',
-              ),
-              _SummaryRow(
-                label: 'Số lượng dự kiến',
-                value: '${_measurement.toString()} ${_price.unitSymbol}',
-              ),
-              _SummaryRow(
-                label: 'Đơn giá',
-                value:
-                    '${_formatVnd(_price.unitPriceVnd)} / ${_price.unitSymbol}',
-              ),
-            ],
+            title: _provideLaundryDetails
+                ? 'Dịch vụ (${_cart.length} mục)'
+                : 'Thông tin đồ giặt',
+            children: _provideLaundryDetails
+                ? _cart
+                      .map(
+                        (item) => Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: _SummaryRow(
+                            label:
+                                '${item.price.serviceName} · ${item.price.itemTypeName}\n'
+                                '${item.measurement} ${item.price.unitSymbol} × '
+                                '${_formatVnd(item.price.unitPriceVnd)}',
+                            value: _formatVnd(
+                              item.estimatedTotalMinorUnits / 100,
+                            ),
+                          ),
+                        ),
+                      )
+                      .toList(growable: false)
+                : const [
+                    Text(
+                      'Cửa hàng sẽ kiểm nhận đồ, xác định dịch vụ và báo giá sau khi nhận đồ.',
+                      style: TextStyle(color: AppColors.textSecondary),
+                    ),
+                  ],
           ),
           const SizedBox(height: 20),
           _SummarySection(
@@ -142,13 +154,19 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           ),
           const SizedBox(height: 20),
           _SummarySection(
-            title: 'Tạm tính',
+            title: _provideLaundryDetails ? 'Tạm tính' : 'Báo giá',
             children: [
-              _SummaryRow(
-                label: 'Tiền dịch vụ',
-                value: _formatVnd(_estimatedTotalMinorUnits / 100),
-              ),
-              if (booking != null)
+              if (_provideLaundryDetails)
+                _SummaryRow(
+                  label: 'Tiền dịch vụ',
+                  value: _formatVnd(_estimatedTotalMinorUnits / 100),
+                )
+              else
+                const Text(
+                  'Cửa hàng sẽ báo giá sau khi kiểm nhận đồ.',
+                  style: TextStyle(color: AppColors.textSecondary),
+                ),
+              if (booking != null && _provideLaundryDetails)
                 _SummaryRow(
                   label: 'Tạm tính theo bảng giá',
                   value: _formatVnd(booking.estimatedTotalVnd),
@@ -190,7 +208,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                         : const Text('Gửi yêu cầu đặt đơn'),
                   )
                 : FilledButton(
-                    onPressed: () => context.goNamed(AppRoutes.myOrders),
+                    onPressed: () => context.go(AppRoutes.myOrdersPath),
                     child: const Text('Đến lịch sử đơn hàng'),
                   ),
           ),

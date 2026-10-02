@@ -40,9 +40,9 @@ class AppRouter {
     final cachedRoles = _cachedRoles;
     if (cachedRoles != null) return cachedRoles;
 
-    final roles = await AuthRepository()
-        .getCurrentRoles()
-        .timeout(const Duration(seconds: 10));
+    final roles = await AuthRepository().getCurrentRoles().timeout(
+      const Duration(seconds: 10),
+    );
     _cachedRoles = roles;
     return roles;
   }
@@ -121,7 +121,11 @@ class AppRouter {
       GoRoute(
         path: AppRoutes.homePath,
         name: AppRoutes.home,
-        builder: (context, state) => const MainShell(initialIndex: 0),
+        builder: (context, state) {
+          final extra = state.extra;
+          final initialIndex = extra is int ? extra : 0;
+          return MainShell(initialIndex: initialIndex);
+        },
       ),
       GoRoute(
         path: AppRoutes.myOrdersPath,
@@ -171,8 +175,14 @@ class AppRouter {
       GoRoute(
         path: '/tracking/:id',
         name: AppRoutes.trackingDetail,
-        builder: (context, state) =>
-            TrackingScreen(orderId: state.pathParameters['id'] ?? 'DH001'),
+        builder: (context, state) {
+          final id = state.pathParameters['id'] ?? '';
+          if (id.startsWith('booking_')) {
+            final bookingId = id.substring(8);
+            return TrackingScreen(bookingId: bookingId);
+          }
+          return TrackingScreen(orderId: id);
+        },
       ),
       GoRoute(
         path: '/payment/:id',
@@ -253,16 +263,15 @@ class _AuthRefreshListenable extends ChangeNotifier {
 
   _AuthRefreshListenable() {
     if (SupabaseConfig.isConfigured) {
-      _subscription = Supabase.instance.client.auth.onAuthStateChange.listen(
-        (authState) {
-          AppRouter._cachedRoles = null;
-          if (authState.event == AuthChangeEvent.passwordRecovery) {
-            AppRouter.router.go(AppRoutes.resetPasswordPath);
-          }
-          notifyListeners();
-        },
-        onError: (Object error, StackTrace stackTrace) {},
-      );
+      _subscription = Supabase.instance.client.auth.onAuthStateChange.listen((
+        authState,
+      ) {
+        AppRouter._cachedRoles = null;
+        if (authState.event == AuthChangeEvent.passwordRecovery) {
+          AppRouter.router.go(AppRoutes.resetPasswordPath);
+        }
+        notifyListeners();
+      }, onError: (Object error, StackTrace stackTrace) {});
     }
   }
 

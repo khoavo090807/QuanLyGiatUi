@@ -4,6 +4,7 @@ import 'package:app_quanly_giaiui/core/navigation/app_routes.dart';
 import 'package:app_quanly_giaiui/core/theme/app_colors.dart';
 import 'package:app_quanly_giaiui/core/theme/app_typography.dart';
 import 'package:app_quanly_giaiui/features/order/data/order_repository.dart';
+import 'package:app_quanly_giaiui/features/order/domain/cart_item.dart';
 import 'package:app_quanly_giaiui/features/order/domain/laundry_order_pricing.dart';
 import 'package:app_quanly_giaiui/features/profile/data/address_repository.dart';
 import 'package:app_quanly_giaiui/features/profile/data/current_location_service.dart';
@@ -27,10 +28,13 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   late Future<_OrderFormData> _formDataFuture;
 
   LaundryPriceOption? _selectedPrice;
+  final List<CartItem> _cart = [];
   CustomerAddress? _selectedAddress;
   CurrentLocationResult? _currentPickupLocation;
   bool _isResolvingLocation = false;
   String _pickupMethod = 'Tại cửa hàng';
+  String _serviceSearchQuery = '';
+  bool _provideLaundryDetails = false;
   late DateTime _appointment;
 
   @override
@@ -70,6 +74,48 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   num get _measurement =>
       num.tryParse(_measurementController.text.trim().replaceAll(',', '.')) ??
       0;
+
+  int get _cartTotalMinorUnits {
+    var total = 0;
+    for (final item in _cart) {
+      total += item.estimatedTotalMinorUnits;
+    }
+    return total;
+  }
+
+  void _addToCart() {
+    final price = _selectedPrice;
+    final measurement = _measurement;
+    if (price == null) return;
+    if (!measurement.isFinite ||
+        measurement <= 0 ||
+        measurement > 99999999.99) {
+      _showMessage('Nhập số lượng hoặc khối lượng hợp lệ.');
+      return;
+    }
+    if (measurement * 100 != (measurement * 100).round()) {
+      _showMessage('Số lượng chỉ được có tối đa 2 chữ số thập phân.');
+      return;
+    }
+
+    setState(() {
+      _cart.add(CartItem(price: price, measurement: measurement));
+      _selectedPrice = null;
+      _measurementController.clear();
+    });
+  }
+
+  void _removeFromCart(int index) {
+    setState(() {
+      _cart.removeAt(index);
+    });
+  }
+
+  void _clearCart() {
+    setState(() {
+      _cart.clear();
+    });
+  }
 
   int? get _estimatedTotalMinorUnits {
     final price = _selectedPrice;
@@ -136,10 +182,105 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  Future<void> _showServicePicker(
+    List<LaundryPriceOption> availablePrices,
+  ) async {
+    _serviceSearchQuery = '';
+    final selected = await showModalBottomSheet<LaundryPriceOption>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          final normalizedQuery = _serviceSearchQuery.trim().toLowerCase();
+          final filteredPrices = availablePrices
+              .where((price) {
+                final label =
+                    '${price.serviceName} ${price.itemTypeName} '
+                            '${price.unitName} ${price.unitSymbol}'
+                        .toLowerCase();
+                return label.contains(normalizedQuery);
+              })
+              .toList(growable: false);
+
+          return SafeArea(
+            child: Padding(
+              padding: EdgeInsets.only(
+                left: 20,
+                top: 16,
+                right: 20,
+                bottom: MediaQuery.viewInsetsOf(context).bottom + 16,
+              ),
+              child: SizedBox(
+                height: MediaQuery.sizeOf(context).height * 0.75,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Chọn dịch vụ và loại đồ',
+                      style: AppTypography.heading3,
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      autofocus: true,
+                      decoration: const InputDecoration(
+                        hintText: 'Tìm dịch vụ hoặc loại đồ...',
+                        prefixIcon: Icon(Icons.search),
+                      ),
+                      onChanged: (value) =>
+                          setSheetState(() => _serviceSearchQuery = value),
+                    ),
+                    const SizedBox(height: 12),
+                    Expanded(
+                      child: filteredPrices.isEmpty
+                          ? const Center(
+                              child: Text('Không tìm thấy dịch vụ phù hợp.'),
+                            )
+                          : ListView.separated(
+                              itemCount: filteredPrices.length,
+                              separatorBuilder: (_, _) =>
+                                  const Divider(height: 1),
+                              itemBuilder: (context, index) {
+                                final price = filteredPrices[index];
+                                return ListTile(
+                                  leading: const Icon(
+                                    Icons.local_laundry_service_outlined,
+                                  ),
+                                  title: Text(
+                                    '${price.serviceName} · ${price.itemTypeName}',
+                                  ),
+                                  subtitle: Text(
+                                    '${_formatVnd(price.unitPriceVnd)} / '
+                                    '${price.unitSymbol}',
+                                  ),
+                                  onTap: () =>
+                                      Navigator.pop(sheetContext, price),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+
+    if (selected == null || !mounted) return;
+    setState(() {
+      _selectedPrice = selected;
+      _measurementController.clear();
+    });
+  }
+
   void _continueToSummary() {
-    if (!(_formKey.currentState?.validate() ?? false)) return;
-    final price = _selectedPrice;
-    if (price == null) return;
+    if (_provideLaundryDetails && _cart.isEmpty) {
+      _showMessage(
+        'Thêm ít nhất một loại đồ hoặc bỏ chọn mục nhập thông tin đồ giặt.',
+      );
+      return;
+    }
     if (_pickupMethod == 'Tại nhà' &&
         _selectedAddress == null &&
         _currentPickupLocation == null) {
@@ -150,8 +291,8 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     context.pushNamed(
       AppRoutes.orderSummary,
       extra: {
-        'price': price,
-        'measurement': _measurement,
+        'cart': _cart,
+        'provideLaundryDetails': _provideLaundryDetails,
         'pickupMethod': _pickupMethod,
         'address': _pickupMethod == 'Tại nhà'
             ? _currentPickupLocation?.address ?? _selectedAddress?.address
@@ -184,23 +325,32 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
 
           final allPrices = snapshot.data!.prices;
           final addresses = snapshot.data!.addresses;
-          if (allPrices.isEmpty) {
+          if (_provideLaundryDetails && allPrices.isEmpty) {
             return const Center(child: Text('Hiện chưa có bảng giá khả dụng.'));
           }
 
-          final selectedPriceId =
-              _selectedPrice?.priceId ?? widget.initialPriceId;
-          _selectedPrice = allPrices.firstWhere(
-            (price) => price.priceId == selectedPriceId,
-            orElse: () => allPrices.first,
-          );
-          
-          // Filter prices to same service if initialPriceId was provided
-          final prices = widget.initialPriceId != null
+          final initialServiceId = widget.initialPriceId == null
+              ? null
+              : allPrices
+                    .where((price) => price.priceId == widget.initialPriceId)
+                    .firstOrNull
+                    ?.serviceId;
+          final addedPriceIds = _cart.map((item) => item.price.priceId).toSet();
+          final scopedPrices = initialServiceId == null
               ? allPrices
-                  .where((price) => price.serviceId == _selectedPrice!.serviceId)
-                  .toList(growable: false)
-              : allPrices;
+              : allPrices
+                    .where((price) => price.serviceId == initialServiceId)
+                    .toList(growable: false);
+          final availablePrices = scopedPrices
+              .where((price) => !addedPriceIds.contains(price.priceId))
+              .toList(growable: false);
+          final selectedPrice =
+              _selectedPrice != null &&
+                  availablePrices.any(
+                    (price) => price.priceId == _selectedPrice!.priceId,
+                  )
+              ? _selectedPrice
+              : null;
           final selectedAddressId = _selectedAddress?.id;
           if (selectedAddressId != null) {
             _selectedAddress = addresses
@@ -221,80 +371,133 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
               children: [
-                Text('Dịch vụ và loại đồ', style: AppTypography.heading2),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<int>(
-                  key: ValueKey(prices.map((price) => price.priceId).join(',')),
-                  initialValue: _selectedPrice!.priceId,
-                  isExpanded: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Dịch vụ / loại đồ / đơn vị',
-                    prefixIcon: Icon(Icons.local_laundry_service_outlined),
+                SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Để cửa hàng kiểm nhận đồ và báo giá'),
+                  subtitle: const Text(
+                    'Bật nếu bạn chưa biết số lượng hoặc khối lượng đồ giặt.',
                   ),
-                  items: prices.map((price) {
-                    return DropdownMenuItem(
-                      value: price.priceId,
-                      child: Text(
-                        '${price.serviceName} · ${price.itemTypeName} (${price.unitSymbol})',
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    );
-                  }).toList(),
-                  onChanged: (priceId) {
-                    if (priceId == null) return;
-                    final price = prices.firstWhere(
-                      (option) => option.priceId == priceId,
-                    );
-                    setState(() {
-                      _selectedPrice = price;
-                      _measurementController.clear();
-                    });
-                  },
+                  value: !_provideLaundryDetails,
+                  onChanged: (storeWillInspect) => setState(() {
+                    _provideLaundryDetails = !storeWillInspect;
+                    _selectedPrice = null;
+                    _measurementController.clear();
+                    if (storeWillInspect) _cart.clear();
+                  }),
                 ),
-                if (_selectedPrice case final price?) ...[
+                if (!_provideLaundryDetails) ...[
                   const SizedBox(height: 8),
+                  const Text(
+                    'Bạn chỉ cần chọn hình thức nhận đồ và lịch hẹn ở bên dưới.',
+                    style: TextStyle(color: AppColors.textSecondary),
+                  ),
+                ] else ...[
+                  const SizedBox(height: 20),
+                  Text('Dịch vụ và loại đồ', style: AppTypography.heading2),
+                  const SizedBox(height: 12),
+                  if (availablePrices.isEmpty)
+                    const Text(
+                      'Bạn đã thêm tất cả loại đồ có thể chọn.',
+                      style: TextStyle(color: AppColors.textSecondary),
+                    )
+                  else
+                    OutlinedButton.icon(
+                      onPressed: () => _showServicePicker(availablePrices),
+                      icon: const Icon(Icons.search),
+                      label: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          selectedPrice == null
+                              ? 'Chọn dịch vụ và loại đồ giặt'
+                              : '${selectedPrice.serviceName} · '
+                                    '${selectedPrice.itemTypeName} '
+                                    '(${selectedPrice.unitSymbol})',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                  if (selectedPrice != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      '${_formatVnd(selectedPrice.unitPriceVnd)} / '
+                      '${selectedPrice.unitSymbol}',
+                      style: AppTypography.bodyText.copyWith(
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 24),
                   Text(
-                    '${_formatVnd(price.unitPriceVnd)} / ${price.unitSymbol}',
-                    style: AppTypography.bodyText.copyWith(
-                      color: AppColors.textSecondary,
+                    _isWeightBased ? 'Khối lượng dự kiến' : 'Số lượng',
+                    style: AppTypography.heading3,
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _measurementController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: InputDecoration(
+                      labelText: _isWeightBased
+                          ? 'Khối lượng (kg)'
+                          : 'Số lượng',
+                      suffixText: _selectedPrice?.unitSymbol,
+                    ),
+                    onChanged: (_) => setState(() {}),
+                    validator: (value) {
+                      final measurement = num.tryParse(
+                        (value ?? '').trim().replaceAll(',', '.'),
+                      );
+                      if (measurement == null || !measurement.isFinite) {
+                        return 'Nhập số lượng hợp lệ.';
+                      }
+                      if (measurement <= 0 || measurement > 99999999.99) {
+                        return 'Giá trị phải lớn hơn 0.';
+                      }
+                      if (measurement * 100 != (measurement * 100).round()) {
+                        return 'Tối đa 2 chữ số thập phân.';
+                      }
+                      return null;
+                    },
+                  ),
+                  if (_estimatedTotalMinorUnits case final total?) ...[
+                    const SizedBox(height: 12),
+                    _EstimateRow(totalMinorUnits: total),
+                  ],
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: selectedPrice == null ? null : _addToCart,
+                      icon: const Icon(Icons.add_shopping_cart_outlined),
+                      label: const Text('Thêm vào đơn hàng'),
                     ),
                   ),
-                ],
-                const SizedBox(height: 24),
-                Text(
-                  _isWeightBased ? 'Khối lượng dự kiến' : 'Số lượng',
-                  style: AppTypography.heading3,
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _measurementController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  decoration: InputDecoration(
-                    labelText: _isWeightBased ? 'Khối lượng (kg)' : 'Số lượng',
-                    suffixText: _selectedPrice?.unitSymbol,
-                  ),
-                  onChanged: (_) => setState(() {}),
-                  validator: (value) {
-                    final measurement = num.tryParse(
-                      (value ?? '').trim().replaceAll(',', '.'),
-                    );
-                    if (measurement == null || !measurement.isFinite) {
-                      return 'Nhập số lượng hợp lệ.';
-                    }
-                    if (measurement <= 0 || measurement > 99999999.99) {
-                      return 'Giá trị phải lớn hơn 0.';
-                    }
-                    if (measurement * 100 != (measurement * 100).round()) {
-                      return 'Tối đa 2 chữ số thập phân.';
-                    }
-                    return null;
-                  },
-                ),
-                if (_estimatedTotalMinorUnits case final total?) ...[
-                  const SizedBox(height: 12),
-                  _EstimateRow(totalMinorUnits: total),
+                  if (_cart.isNotEmpty) ...[
+                    const SizedBox(height: 24),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Các mục đã chọn (${_cart.length})',
+                            style: AppTypography.heading3,
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: _clearCart,
+                          child: const Text('Xóa tất cả'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    ..._cart.indexed.map(
+                      (entry) => _CartItemTile(
+                        item: entry.$2,
+                        onRemove: () => _removeFromCart(entry.$1),
+                      ),
+                    ),
+                    _EstimateRow(totalMinorUnits: _cartTotalMinorUnits),
+                  ],
                 ],
                 const SizedBox(height: 28),
                 Text('Hình thức nhận đồ', style: AppTypography.heading3),
@@ -456,6 +659,33 @@ class _OrderFormData {
 
   final List<LaundryPriceOption> prices;
   final List<CustomerAddress> addresses;
+}
+
+class _CartItemTile extends StatelessWidget {
+  const _CartItemTile({required this.item, required this.onRemove});
+
+  final CartItem item;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: const Icon(Icons.local_laundry_service_outlined),
+        title: Text('${item.price.serviceName} · ${item.price.itemTypeName}'),
+        subtitle: Text(
+          '${item.measurement} ${item.price.unitSymbol} · '
+          '${item.price.unitPriceVnd.toStringAsFixed(0)} đ/${item.price.unitSymbol}',
+        ),
+        trailing: IconButton(
+          tooltip: 'Xóa mục này',
+          onPressed: onRemove,
+          icon: const Icon(Icons.delete_outline),
+        ),
+      ),
+    );
+  }
 }
 
 class _EstimateRow extends StatelessWidget {
