@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:app_quanly_giaiui/core/navigation/app_routes.dart';
 import 'package:app_quanly_giaiui/core/theme/app_colors.dart';
 import 'package:app_quanly_giaiui/core/theme/app_typography.dart';
 import 'package:app_quanly_giaiui/features/order/data/order_repository.dart';
 import 'package:app_quanly_giaiui/features/order/domain/cart_item.dart';
 
+import 'package:app_quanly_giaiui/features/main_shell.dart';
 class OrderSummaryScreen extends StatefulWidget {
   const OrderSummaryScreen({required this.draft, super.key});
 
@@ -208,9 +207,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                         : const Text('Gửi yêu cầu đặt đơn'),
                   )
                 : FilledButton(
-                    onPressed: () => context.go(AppRoutes.myOrdersPath),
-                    child: const Text('Đến lịch sử đơn hàng'),
-                  ),
+    onPressed: () => MainShell.goToTab(context, 1),
+    child: const Text('Đến lịch sử đơn hàng'),
+  ),
           ),
         ),
       ),

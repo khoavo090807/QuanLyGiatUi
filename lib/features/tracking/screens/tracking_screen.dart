@@ -50,6 +50,8 @@ class _TrackingScreenState extends State<TrackingScreen> {
         '${local.minute.toString().padLeft(2, '0')}';
   }
 
+  String _formatVnd(num value) => '${value.toStringAsFixed(0)} đ';
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -149,39 +151,86 @@ class _TrackingScreenState extends State<TrackingScreen> {
                       isLast: isLast,
                     );
                   }),
-                const SizedBox(height: 20),
-                Text('Thông tin đơn hàng', style: AppTypography.heading3),
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: AppColors.divider),
-                    borderRadius: BorderRadius.circular(8),
+                const SizedBox(height: 28),
+                // Chi tiết dịch vụ
+                if (details.items != null && details.items!.isNotEmpty) ...[
+                  _SummarySection(
+                    title: 'Dịch vụ (${details.items!.length} mục)',
+                    children: details.items!
+                        .map(
+                          (item) => Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: _SummaryRow(
+                              label:
+                                  '${item.serviceName} · ${item.itemTypeName}\n'
+                                  '${item.measurement} ${item.unitSymbol}' +
+                                  (item.unitPriceVnd > 0 
+                                      ? ' × ${_formatVnd(item.unitPriceVnd)}'
+                                      : ''),
+                              value: item.totalVnd > 0
+                                  ? _formatVnd(item.totalVnd)
+                                  : '',
+                            ),
+                          ),
+                        )
+                        .toList(growable: false),
                   ),
-                  child: Column(
-                    children: [
-                      _DetailRow(
-                        label: 'Dịch vụ',
-                        value: order.lineDescription,
-                      ),
-                      _DetailRow(
-                        label: 'Ngày tạo',
-                        value: _formatDateTime(order.createdAt),
-                      ),
-                      _DetailRow(
-                        label: 'Tạm tính',
-                        value: '${order.totalVnd.toStringAsFixed(0)} đ',
-                        valueColor: AppColors.primary,
+                  const SizedBox(height: 20),
+                ] else if (!order.hasLaundryDetails) ...[
+                  _SummarySection(
+                    title: 'Thông tin đồ giặt',
+                    children: const [
+                      Text(
+                        'Bạn đã chọn không nhập thông tin đồ giặt nên cửa hàng sẽ kiểm nhận đồ, xác định dịch vụ và báo giá sau khi nhận đồ.',
+                        style: TextStyle(color: AppColors.textSecondary),
                       ),
                     ],
                   ),
-                ),
-                const SizedBox(height: 20),
-                StatusBadge(
-                  text:
-                      'Số tiền cuối cùng được cửa hàng xác nhận sau kiểm nhận.',
-                  backgroundColor: AppColors.infoLight,
-                  textColor: AppColors.info,
+                  const SizedBox(height: 20),
+                ],
+                // Thông tin nhận đồ
+                if (details.pickupMethod != null) ...[
+                  _SummarySection(
+                    title: 'Nhận đồ',
+                    children: [
+                      _SummaryRow(
+                        label: 'Hình thức',
+                        value: details.pickupMethod!,
+                      ),
+                      if (details.address != null && details.address!.isNotEmpty)
+                        _SummaryRow(label: 'Địa chỉ', value: details.address!),
+                      if (details.appointment != null)
+                        _SummaryRow(
+                          label: 'Lịch hẹn',
+                          value: _formatDateTime(details.appointment!),
+                        ),
+                      if (details.notes != null && details.notes!.isNotEmpty)
+                        _SummaryRow(label: 'Ghi chú', value: details.notes!),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                ],
+                // Tổng tiền
+                _SummarySection(
+                  title: order.hasLaundryDetails ? 'Tạm tính' : 'Báo giá',
+                  children: [
+                    if (order.hasLaundryDetails && order.totalVnd > 0)
+                      _SummaryRow(
+                        label: 'Tạm tính theo bảng giá',
+                        value: _formatVnd(order.totalVnd),
+                        emphasize: true,
+                      )
+                    else if (!order.hasLaundryDetails)
+                      const Text(
+                        'Cửa hàng sẽ báo giá sau khi kiểm nhận đồ.',
+                        style: TextStyle(color: AppColors.textSecondary),
+                      ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Giá cuối cùng có thể được điều chỉnh sau khi cửa hàng kiểm nhận đồ.',
+                      style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -257,12 +306,35 @@ class _TimelineEvent extends StatelessWidget {
   }
 }
 
-class _DetailRow extends StatelessWidget {
-  const _DetailRow({required this.label, required this.value, this.valueColor});
+class _SummarySection extends StatelessWidget {
+  const _SummarySection({required this.title, required this.children});
+
+  final String title;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: AppTypography.heading3),
+        const SizedBox(height: 10),
+        ...children,
+      ],
+    );
+  }
+}
+
+class _SummaryRow extends StatelessWidget {
+  const _SummaryRow({
+    required this.label,
+    required this.value,
+    this.emphasize = false,
+  });
 
   final String label;
   final String value;
-  final Color? valueColor;
+  final bool emphasize;
 
   @override
   Widget build(BuildContext context) {
@@ -271,20 +343,24 @@ class _DetailRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: 84,
+          Expanded(
             child: Text(
               label,
-              style: AppTypography.bodySmall.copyWith(
+              style: TextStyle(
                 color: AppColors.textSecondary,
+                fontWeight: emphasize ? FontWeight.w600 : null,
               ),
             ),
           ),
-          Expanded(
+          const SizedBox(width: 12),
+          Flexible(
             child: Text(
               value,
               textAlign: TextAlign.end,
-              style: AppTypography.bodyText.copyWith(color: valueColor),
+              style: TextStyle(
+                color: emphasize ? AppColors.primary : AppColors.textPrimary,
+                fontWeight: emphasize ? FontWeight.bold : null,
+              ),
             ),
           ),
         ],

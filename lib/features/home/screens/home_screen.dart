@@ -10,10 +10,15 @@ import 'package:app_quanly_giaiui/features/notification/data/notification_reposi
 import 'package:app_quanly_giaiui/features/order/data/order_repository.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({required this.unreadNotificationCount, super.key});
+  const HomeScreen({
+    required this.unreadNotificationCount,
+    required this.onOpenNotifications,
+    super.key,
+  });
+
 
   final ValueNotifier<int> unreadNotificationCount;
-
+  final VoidCallback onOpenNotifications;
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }

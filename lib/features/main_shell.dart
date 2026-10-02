@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:app_quanly_giaiui/core/constants/app_strings.dart';
+import 'package:app_quanly_giaiui/core/navigation/app_routes.dart';
 import 'package:app_quanly_giaiui/core/theme/app_colors.dart';
 import 'package:app_quanly_giaiui/features/auth/data/auth_repository.dart';
 import 'package:app_quanly_giaiui/features/history/screens/history_screen.dart';
@@ -8,10 +10,29 @@ import 'package:app_quanly_giaiui/features/notification/screens/notification_scr
 import 'package:app_quanly_giaiui/features/profile/screens/profile_screen.dart';
 import 'package:app_quanly_giaiui/features/staff/screens/staff_order_queue_screen.dart';
 
+class TabRequest {
+  TabRequest(this.index); // KHÔNG const, để mỗi lần là một đối tượng mới
+  final int index;
+}
+
 class MainShell extends StatefulWidget {
   final int initialIndex;
 
   const MainShell({super.key, this.initialIndex = 0});
+
+  static final ValueNotifier<TabRequest?> tabRequests = ValueNotifier(null);
+
+  /// Chuyển tới tab [index] của MainShell trong mọi trường hợp.
+  static void goToTab(BuildContext context, int index) {
+    tabRequests.value = TabRequest(index); // shell đang tồn tại sẽ đổi tab ngay
+    const paths = [
+      AppRoutes.homePath,
+      AppRoutes.myOrdersPath,
+      AppRoutes.notificationsPath,
+      AppRoutes.profilePath,
+    ];
+    context.go(paths[index]); // đóng các màn đang push phía trên
+  }
 
   @override
   State<MainShell> createState() => _MainShellState();
@@ -22,6 +43,7 @@ class _MainShellState extends State<MainShell> {
   final _unreadNotificationCount = ValueNotifier<int>(0);
   late Future<List<String>> _rolesFuture;
   late int _selectedIndex;
+  bool _isStaff = false;
   void Function(bool)? _setHistoryVisibility;
 
   @override
@@ -29,6 +51,13 @@ class _MainShellState extends State<MainShell> {
     super.initState();
     _selectedIndex = widget.initialIndex;
     _rolesFuture = _authRepository.getCurrentRoles();
+    MainShell.tabRequests.addListener(_onTabRequest);
+  }
+
+  void _onTabRequest() {
+    final request = MainShell.tabRequests.value;
+    if (request == null || !mounted) return;
+    _onDestinationSelected(request.index, _isStaff);
   }
 
   @override
@@ -41,6 +70,7 @@ class _MainShellState extends State<MainShell> {
 
   @override
   void dispose() {
+    MainShell.tabRequests.removeListener(_onTabRequest);
     _unreadNotificationCount.dispose();
     super.dispose();
   }
@@ -50,7 +80,7 @@ class _MainShellState extends State<MainShell> {
 
   void _onDestinationSelected(int index, bool isStaff) {
     setState(() => _selectedIndex = index);
-    
+
     // Notify HistoryScreen about visibility change
     if (!isStaff) {
       final isHistoryVisible = index == 1;
@@ -65,6 +95,7 @@ class _MainShellState extends State<MainShell> {
       builder: (context, snapshot) {
         final roles = snapshot.data ?? const <String>[];
         final isStaff = _hasStaffRole(roles);
+        _isStaff = isStaff;
         final selectedIndex = isStaff
             ? (_selectedIndex.clamp(0, 2))
             : (_selectedIndex.clamp(0, 3));
@@ -78,7 +109,10 @@ class _MainShellState extends State<MainShell> {
                 const ProfileScreen(),
               ]
             : [
-                HomeScreen(unreadNotificationCount: _unreadNotificationCount),
+                HomeScreen(
+                  unreadNotificationCount: _unreadNotificationCount,
+                  onOpenNotifications: () => _onDestinationSelected(2, false),
+                ),
                 HistoryScreen(
                   onVisibilityChanged: (setVisibility) {
                     _setHistoryVisibility = setVisibility;
@@ -159,7 +193,8 @@ class _MainShellState extends State<MainShell> {
             child: SafeArea(
               child: NavigationBar(
                 selectedIndex: selectedIndex,
-                onDestinationSelected: (index) => _onDestinationSelected(index, isStaff),
+                onDestinationSelected: (index) =>
+                    _onDestinationSelected(index, isStaff),
                 backgroundColor: AppColors.surface,
                 indicatorColor: AppColors.primaryLight,
                 destinations: destinations,

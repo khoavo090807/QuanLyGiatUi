@@ -202,10 +202,41 @@ class LaundryOrderStatusEvent {
 }
 
 class LaundryOrderDetails {
-  const LaundryOrderDetails({required this.order, required this.events});
+  const LaundryOrderDetails({
+    required this.order,
+    required this.events,
+    this.pickupMethod,
+    this.address,
+    this.appointment,
+    this.notes,
+    this.items,
+  });
 
   final LaundryOrderRecord order;
   final List<LaundryOrderStatusEvent> events;
+  final String? pickupMethod;
+  final String? address;
+  final DateTime? appointment;
+  final String? notes;
+  final List<LaundryOrderItem>? items;
+}
+
+class LaundryOrderItem {
+  const LaundryOrderItem({
+    required this.serviceName,
+    required this.itemTypeName,
+    required this.unitSymbol,
+    required this.measurement,
+    required this.unitPriceVnd,
+    required this.totalVnd,
+  });
+
+  final String serviceName;
+  final String itemTypeName;
+  final String unitSymbol;
+  final num measurement;
+  final num unitPriceVnd;
+  final num totalVnd;
 }
 
 class OrderRepository {
@@ -378,9 +409,12 @@ class OrderRepository {
         .select(
           'DonHangID,BookingID,MaDonHang,TrangThai,ThanhTien,NgayTao,'
           'ChiTietDonHang('
-          'SoLuong,KhoiLuong,DichVu(TenDichVu),'
-          'LoaiDoGiat(TenLoaiDoGiat),DonViTinh(KyHieu)'
-          ')',
+          'SoLuong,KhoiLuong,DonGia,ThanhTien,'
+          'DichVu(TenDichVu),'
+          'LoaiDoGiat(TenLoaiDoGiat),'
+          'DonViTinh(KyHieu)'
+          '),'
+          'Booking(HinhThucNhanDo,DiaChiNhan,NgayHen,GioHen,GhiChu)',
         )
         .eq('DonHangID', orderId)
         .maybeSingle();
@@ -393,11 +427,50 @@ class OrderRepository {
         .eq('DonHangID', orderId)
         .order('ThoiGian');
 
+    final booking = order['Booking'] as Map<String, dynamic>?;
+    DateTime? appointment;
+    if (booking != null && booking['NgayHen'] != null && booking['GioHen'] != null) {
+      final date = DateTime.parse(booking['NgayHen'] as String);
+      final timeStr = booking['GioHen'] as String;
+      final timeParts = timeStr.split(':');
+      appointment = DateTime(
+        date.year,
+        date.month,
+        date.day,
+        int.parse(timeParts[0]),
+        int.parse(timeParts[1]),
+      );
+    }
+
+    final details = order['ChiTietDonHang'] as List<dynamic>? ?? [];
+    final items = details.map((entry) {
+      final detail = entry as Map<String, dynamic>;
+      final service = detail['DichVu'] as Map<String, dynamic>?;
+      final itemType = detail['LoaiDoGiat'] as Map<String, dynamic>?;
+      final unit = detail['DonViTinh'] as Map<String, dynamic>?;
+      final measurement = detail['KhoiLuong'] ?? detail['SoLuong'];
+      final unitPrice = detail['DonGia'] as num? ?? 0;
+      final total = detail['ThanhTien'] as num? ?? 0;
+      return LaundryOrderItem(
+        serviceName: service?['TenDichVu'] as String? ?? 'Dịch vụ',
+        itemTypeName: itemType?['TenLoaiDoGiat'] as String? ?? 'Đồ giặt',
+        unitSymbol: unit?['KyHieu'] as String? ?? '',
+        measurement: measurement as num,
+        unitPriceVnd: unitPrice,
+        totalVnd: total,
+      );
+    }).toList(growable: false);
+
     return LaundryOrderDetails(
       order: LaundryOrderRecord.fromJson(order),
       events: (events as List<dynamic>)
           .map((event) => LaundryOrderStatusEvent.fromJson(event as Map<String, dynamic>))
           .toList(growable: false),
+      pickupMethod: booking?['HinhThucNhanDo'] as String?,
+      address: booking?['DiaChiNhan'] as String?,
+      appointment: appointment,
+      notes: booking?['GhiChu'] as String?,
+      items: items.isNotEmpty ? items : null,
     );
   }
 
@@ -407,10 +480,12 @@ class OrderRepository {
     final booking = await _client
         .from('Booking')
         .select(
-          'BookingID,MaBooking,TrangThai,NgayTao,'
+          'BookingID,MaBooking,TrangThai,NgayTao,HinhThucNhanDo,DiaChiNhan,NgayHen,GioHen,GhiChu,'
           'ChiTietBooking('
-          'SoLuong,KhoiLuong,ThanhTien,DichVu(TenDichVu),'
-          'LoaiDoGiat(TenLoaiDoGiat),DonViTinh(KyHieu)'
+          'SoLuong,KhoiLuong,DonGia,ThanhTien,'
+          'DichVu(TenDichVu),'
+          'LoaiDoGiat(TenLoaiDoGiat),'
+          'DonViTinh(KyHieu)'
           ')',
         )
         .eq('BookingID', bookingId)
@@ -420,10 +495,47 @@ class OrderRepository {
 
     final record = LaundryOrderRecord.fromBookingJson(booking);
     
-    // Bookings don't have status events like orders, so return empty list
+    DateTime? appointment;
+    if (booking['NgayHen'] != null && booking['GioHen'] != null) {
+      final date = DateTime.parse(booking['NgayHen'] as String);
+      final timeStr = booking['GioHen'] as String;
+      final timeParts = timeStr.split(':');
+      appointment = DateTime(
+        date.year,
+        date.month,
+        date.day,
+        int.parse(timeParts[0]),
+        int.parse(timeParts[1]),
+      );
+    }
+
+    final details = booking['ChiTietBooking'] as List<dynamic>? ?? [];
+    final items = details.map((entry) {
+      final detail = entry as Map<String, dynamic>;
+      final service = detail['DichVu'] as Map<String, dynamic>?;
+      final itemType = detail['LoaiDoGiat'] as Map<String, dynamic>?;
+      final unit = detail['DonViTinh'] as Map<String, dynamic>?;
+      final measurement = detail['KhoiLuong'] ?? detail['SoLuong'];
+      final unitPrice = detail['DonGia'] as num? ?? 0;
+      final total = detail['ThanhTien'] as num? ?? 0;
+      return LaundryOrderItem(
+        serviceName: service?['TenDichVu'] as String? ?? 'Dịch vụ',
+        itemTypeName: itemType?['TenLoaiDoGiat'] as String? ?? 'Đồ giặt',
+        unitSymbol: unit?['KyHieu'] as String? ?? '',
+        measurement: measurement as num,
+        unitPriceVnd: unitPrice,
+        totalVnd: total,
+      );
+    }).toList(growable: false);
+    
     return LaundryOrderDetails(
       order: record,
       events: const [],
+      pickupMethod: booking['HinhThucNhanDo'] as String?,
+      address: booking['DiaChiNhan'] as String?,
+      appointment: appointment,
+      notes: booking['GhiChu'] as String?,
+      items: items.isNotEmpty ? items : null,
     );
   }
 
