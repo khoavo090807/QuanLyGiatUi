@@ -14,4 +14,18 @@ void main() {
     expect(booking.bookingNumber, 'BK-20260929122336-17194d74');
     expect(booking.estimatedTotalVnd, 10000);
   });
+
+  test('parses status-history RPC rows without changing event fields', () {
+    final event = LaundryOrderStatusEvent.fromJson({
+      'trangthaicu': 'Chờ tiếp nhận',
+      'trangthaimoi': 'Đã tiếp nhận',
+      'lydo': 'Đơn đã được cửa hàng xác nhận',
+      'thoigian': '2026-10-03T07:00:00',
+    });
+
+    expect(event.previousStatus, 'Chờ tiếp nhận');
+    expect(event.status, 'Đã tiếp nhận');
+    expect(event.note, 'Đơn đã được cửa hàng xác nhận');
+    expect(event.occurredAt, DateTime(2026, 10, 3, 7));
+  });
 }

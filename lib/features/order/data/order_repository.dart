@@ -288,26 +288,46 @@ class OrderRepository {
   }
 
   Future<List<LaundryOrderRecord>> getCustomerOrders() async {
-    final rows = await _client
-        .from('DonHang')
-        .select(
-          'DonHangID,BookingID,MaDonHang,TrangThai,ThanhTien,NgayTao,'
-          'ChiTietDonHang('
-          'SoLuong,KhoiLuong,DichVu(TenDichVu),'
-          'LoaiDoGiat(TenLoaiDoGiat),DonViTinh(KyHieu)'
-          ')',
-        )
-        .order('NgayTao', ascending: false);
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      return const [];
+    }
 
-    return (rows as List<dynamic>)
-        .map((row) => LaundryOrderRecord.fromJson(row as Map<String, dynamic>))
-        .toList(growable: false);
+    try {
+      final rows = await _client
+          .from('DonHang')
+          .select(
+            'DonHangID,BookingID,MaDonHang,TrangThai,ThanhTien,NgayTao,'
+            'ChiTietDonHang('
+            'SoLuong,KhoiLuong,DichVu(TenDichVu),'
+            'LoaiDoGiat(TenLoaiDoGiat),DonViTinh(KyHieu)'
+            ')',
+          )
+          .order('NgayTao', ascending: false);
+
+      return (rows as List<dynamic>)
+          .map((row) => LaundryOrderRecord.fromJson(row as Map<String, dynamic>))
+          .toList(growable: false);
+    } catch (e) {
+      // Log error but don't throw, allow other queries to complete
+      return const [];
+    }
   }
 
   Future<List<LaundryOrderRecord>> getStaffOrders() => getCustomerOrders();
 
   Future<List<LaundryOrderRecord>> getCustomerHistory() async {
-    final results = await Future.wait([getCustomerOrders(), _getBookings()]);
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      throw const AuthException('Bạn cần đăng nhập để xem lịch sử.');
+    }
+
+    // Fetch both orders and bookings, but don't fail if one fails
+    final results = await Future.wait([
+      getCustomerOrders().catchError((_) => <LaundryOrderRecord>[]),
+      _getBookings().catchError((_) => <LaundryOrderRecord>[]),
+    ]);
+    
     final orders = results[0];
     final orderBookingIds = orders
         .map((order) => order.bookingId)
@@ -330,46 +350,56 @@ class OrderRepository {
   }
 
   Future<List<LaundryOrderRecord>> _getBookings() async {
-    // Get bookings first
-    final bookings = await _client
-        .from('Booking')
-        .select('BookingID,MaBooking,TrangThai,NgayTao')
-        .order('NgayTao', ascending: false);
-
-    // Then fetch ChiTietBooking for each booking
-    final bookingIds = (bookings as List<dynamic>)
-        .map((b) => (b as Map<String, dynamic>)['BookingID'] as int)
-        .toList();
-
-    final chiTietMap = <int, List<dynamic>>{};
-    if (bookingIds.isNotEmpty) {
-      final chiTietRows = await _client
-          .from('ChiTietBooking')
-          .select(
-            'BookingID,SoLuong,KhoiLuong,ThanhTien,'
-            'DichVu(TenDichVu),LoaiDoGiat(TenLoaiDoGiat),DonViTinh(KyHieu)',
-          )
-          .inFilter('BookingID', bookingIds);
-
-      for (final row in chiTietRows as List<dynamic>) {
-        final detail = row as Map<String, dynamic>;
-        final bookingId = (detail['BookingID'] as num).toInt();
-        chiTietMap.putIfAbsent(bookingId, () => []).add(detail);
-      }
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      return const [];
     }
 
-    // Build LaundryOrderRecord with joined data
-    return (bookings as List<dynamic>)
-        .map((row) {
-          final booking = row as Map<String, dynamic>;
-          final bookingId = (booking['BookingID'] as num).toInt();
-          final details = chiTietMap[bookingId] ?? const [];
-          return LaundryOrderRecord.fromBookingJson({
-            ...booking,
-            'ChiTietBooking': details,
-          });
-        })
-        .toList(growable: false);
+    try {
+      // Get bookings first
+      final bookings = await _client
+          .from('Booking')
+          .select('BookingID,MaBooking,TrangThai,NgayTao')
+          .order('NgayTao', ascending: false);
+
+      // Then fetch ChiTietBooking for each booking
+      final bookingIds = (bookings as List<dynamic>)
+          .map((b) => (b as Map<String, dynamic>)['BookingID'] as int)
+          .toList();
+
+      final chiTietMap = <int, List<dynamic>>{};
+      if (bookingIds.isNotEmpty) {
+        final chiTietRows = await _client
+            .from('ChiTietBooking')
+            .select(
+              'BookingID,SoLuong,KhoiLuong,ThanhTien,'
+              'DichVu(TenDichVu),LoaiDoGiat(TenLoaiDoGiat),DonViTinh(KyHieu)',
+            )
+            .inFilter('BookingID', bookingIds);
+
+        for (final row in chiTietRows as List<dynamic>) {
+          final detail = row as Map<String, dynamic>;
+          final bookingId = (detail['BookingID'] as num).toInt();
+          chiTietMap.putIfAbsent(bookingId, () => []).add(detail);
+        }
+      }
+
+      // Build LaundryOrderRecord with joined data
+      return (bookings as List<dynamic>)
+          .map((row) {
+            final booking = row as Map<String, dynamic>;
+            final bookingId = (booking['BookingID'] as num).toInt();
+            final details = chiTietMap[bookingId] ?? const [];
+            return LaundryOrderRecord.fromBookingJson({
+              ...booking,
+              'ChiTietBooking': details,
+            });
+          })
+          .toList(growable: false);
+    } catch (e) {
+      // Log error but don't throw, allow other queries to complete
+      return const [];
+    }
   }
 
   Future<void> transitionStatus({
@@ -421,11 +451,10 @@ class OrderRepository {
 
     if (order == null) throw StateError('Không tìm thấy đơn hàng.');
 
-    final events = await _client
-        .from('DonHang_TrangThai')
-        .select('TrangThaiCu,TrangThaiMoi,LyDo,ThoiGian')
-        .eq('DonHangID', orderId)
-        .order('ThoiGian');
+    final events = await _client.rpc(
+      'get_laundry_order_status_history',
+      params: {'p_donhangid': orderId},
+    );
 
     final booking = order['Booking'] as Map<String, dynamic>?;
     DateTime? appointment;
@@ -474,8 +503,6 @@ class OrderRepository {
     );
   }
 
-
-
   Future<LaundryOrderDetails> getBookingDetails(int bookingId) async {
     final booking = await _client
         .from('Booking')
@@ -494,7 +521,7 @@ class OrderRepository {
     if (booking == null) throw StateError('Không tìm thấy yêu cầu đặt giặt.');
 
     final record = LaundryOrderRecord.fromBookingJson(booking);
-    
+
     DateTime? appointment;
     if (booking['NgayHen'] != null && booking['GioHen'] != null) {
       final date = DateTime.parse(booking['NgayHen'] as String);
@@ -527,7 +554,7 @@ class OrderRepository {
         totalVnd: total,
       );
     }).toList(growable: false);
-    
+
     return LaundryOrderDetails(
       order: record,
       events: const [],
