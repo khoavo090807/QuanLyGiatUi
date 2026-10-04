@@ -44,6 +44,11 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     return AppColors.info;
   }
 
+  String _processingTimeLabel(int? minutes) {
+    if (minutes == null || minutes <= 0) return 'Đang cập nhật';
+    return '$minutes phút';
+  }
+
   @override
   Widget build(BuildContext context) {
     final serviceId = int.tryParse(widget.serviceId);
@@ -73,7 +78,8 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
             );
           }
 
-          final serviceName = prices.first.serviceName;
+          final service = prices.first;
+          final serviceName = service.serviceName;
           final svcColor = _serviceColor(serviceName);
 
           return CustomScrollView(
@@ -102,10 +108,27 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                     Text(serviceName, style: AppTypography.heading1),
                     const SizedBox(height: 8),
                     Text(
-                      'Chọn loại đồ và đơn vị tính theo bảng giá hiện hành.',
+                      service.serviceDescription?.trim().isNotEmpty == true
+                          ? service.serviceDescription!.trim()
+                          : 'Mô tả dịch vụ đang được cập nhật.',
                       style: AppTypography.bodyText.copyWith(
                         color: AppColors.textSecondary,
                       ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.schedule_outlined,
+                          color: AppColors.primary,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Thời gian xử lý dự kiến: '
+                          '${_processingTimeLabel(service.processingTimeMinutes)}',
+                          style: AppTypography.bodyText,
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 24),
                     Text('Bảng giá', style: AppTypography.heading3),

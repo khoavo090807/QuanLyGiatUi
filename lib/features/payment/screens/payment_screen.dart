@@ -18,7 +18,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
   final _repository = PaymentRepository();
   final _idempotencyKey = OrderRepository.createIdempotencyKey();
   late Future<PaymentDetails> _detailsFuture;
-  String _method = 'Chuyển khoản';
   bool _isSubmitting = false;
   String? _errorMessage;
 
@@ -44,7 +43,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     await future;
   }
 
-  Future<void> _requestPayment() async {
+  Future<void> _requestPayment(String method) async {
     final id = _orderId;
     if (id == null) return;
     setState(() {
@@ -54,7 +53,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     try {
       await _repository.requestPayment(
         orderId: id,
-        method: _method,
+        method: method,
         idempotencyKey: _idempotencyKey,
       );
       await _refresh();
@@ -94,13 +93,17 @@ class _PaymentScreenState extends State<PaymentScreen> {
             (payment) => payment.status == 'Chờ thanh toán',
           );
           final isPaid = invoice.status == 'Đã thanh toán';
+          final paymentMethod = details.paymentMethod ?? 'Chuyển khoản';
           return RefreshIndicator(
             onRefresh: _refresh,
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(20),
               children: [
-                Text('Hóa đơn ${invoice.number}', style: AppTypography.heading2),
+                Text(
+                  'Hóa đơn ${invoice.number}',
+                  style: AppTypography.heading2,
+                ),
                 const SizedBox(height: 8),
                 Text(
                   'Đơn hàng #${widget.orderId}',
@@ -140,39 +143,34 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 else if (pending.isNotEmpty)
                   _PaymentMessage(
                     icon: Icons.hourglass_top,
-                    text: 'Đã ghi nhận yêu cầu ${pending.first.method.toLowerCase()}. '
+                    text:
+                        'Đã ghi nhận yêu cầu ${pending.first.method.toLowerCase()}. '
                         'Thanh toán sẽ hoàn tất sau khi cửa hàng đối soát.',
                   )
                 else ...[
-                  Text(AppStrings.paymentMethod, style: AppTypography.heading3),
+                  Text('Hình thức thanh toán', style: AppTypography.heading3),
                   const SizedBox(height: 12),
-                  SegmentedButton<String>(
-                    segments: const [
-                      ButtonSegment(
-                        value: 'Chuyển khoản',
-                        icon: Icon(Icons.account_balance_outlined),
-                        label: Text('Chuyển khoản'),
-                      ),
-                      ButtonSegment(
-                        value: 'Tiền mặt',
-                        icon: Icon(Icons.payments_outlined),
-                        label: Text('Tiền mặt'),
-                      ),
-                    ],
-                    selected: {_method},
-                    onSelectionChanged: (selection) {
-                      setState(() => _method = selection.first);
-                    },
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(
+                      paymentMethod == 'Tiền mặt'
+                          ? Icons.payments_outlined
+                          : Icons.account_balance_outlined,
+                    ),
+                    title: Text(paymentMethod),
+                    subtitle: const Text('Đã chọn khi tạo đơn hàng'),
                   ),
                   const SizedBox(height: 12),
                   const _PaymentMessage(
                     icon: Icons.info_outline,
-                    text: 'Yêu cầu thanh toán sẽ ở trạng thái chờ cho đến khi nhân viên xác nhận.',
+                    text:
+                        'Yêu cầu thanh toán sẽ ở trạng thái chờ cho đến khi nhân viên xác nhận.',
                   ),
                   const SizedBox(height: 12),
                   const _PaymentMessage(
                     icon: Icons.account_balance_wallet_outlined,
-                    text: 'MoMo chưa khả dụng: cần cấu hình merchant và callback đối soát trước khi bật.',
+                    text:
+                        'MoMo chưa khả dụng: cần cấu hình merchant và callback đối soát trước khi bật.',
                   ),
                 ],
                 if (_errorMessage != null) ...[
@@ -191,7 +189,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
         future: _detailsFuture,
         builder: (context, snapshot) {
           final details = snapshot.data;
-          final canRequest = details?.invoice?.status == 'Chưa thanh toán' &&
+          final canRequest =
+              details?.invoice?.status == 'Chưa thanh toán' &&
               !(details?.payments.any(
                     (payment) => payment.status == 'Chờ thanh toán',
                   ) ??
@@ -204,7 +203,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
               child: SizedBox(
                 width: double.infinity,
                 child: FilledButton(
-                  onPressed: _isSubmitting ? null : _requestPayment,
+                  onPressed: _isSubmitting
+                      ? null
+                      : () => _requestPayment(
+                          details?.paymentMethod ?? 'Chuyển khoản',
+                        ),
                   child: _isSubmitting
                       ? const SizedBox.square(
                           dimension: 20,

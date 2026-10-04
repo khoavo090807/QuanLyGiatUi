@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'package:app_quanly_giaiui/core/navigation/app_routes.dart';
 import 'package:app_quanly_giaiui/core/theme/app_colors.dart';
 import 'package:app_quanly_giaiui/core/theme/app_typography.dart';
-import 'package:app_quanly_giaiui/core/widgets/status_badge.dart';
 import 'package:app_quanly_giaiui/features/order/data/order_repository.dart';
 
 class TrackingScreen extends StatefulWidget {
@@ -163,10 +164,8 @@ class _TrackingScreenState extends State<TrackingScreen> {
                             child: _SummaryRow(
                               label:
                                   '${item.serviceName} · ${item.itemTypeName}\n'
-                                  '${item.measurement} ${item.unitSymbol}' +
-                                  (item.unitPriceVnd > 0 
-                                      ? ' × ${_formatVnd(item.unitPriceVnd)}'
-                                      : ''),
+                                  '${item.measurement} ${item.unitSymbol}'
+                                  '${item.unitPriceVnd > 0 ? ' × ${_formatVnd(item.unitPriceVnd)}' : ''}',
                               value: item.totalVnd > 0
                                   ? _formatVnd(item.totalVnd)
                                   : '',
@@ -232,6 +231,18 @@ class _TrackingScreenState extends State<TrackingScreen> {
                     ),
                   ],
                 ),
+                if (widget.orderId != null &&
+                    (order.status == 'Đã giao' || order.status == 'Đã thanh toán')) ...[
+                  const SizedBox(height: 24),
+                  FilledButton.icon(
+                    onPressed: () => context.pushNamed(
+                      AppRoutes.review,
+                      pathParameters: {'id': widget.orderId!},
+                    ),
+                    icon: const Icon(Icons.star_outline_rounded),
+                    label: const Text('Đánh giá dịch vụ'),
+                  ),
+                ],
               ],
             ),
           );

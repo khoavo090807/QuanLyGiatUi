@@ -18,6 +18,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isStaffLogin = false;
+  bool _useEmailPassword = false;
   bool _obscurePassword = true;
   bool _isLoading = false;
 
@@ -29,7 +30,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _login() async {
-    if (_isStaffLogin &&
+    if ((_isStaffLogin || _useEmailPassword) &&
         (_emailController.text.trim().isEmpty ||
             _passwordController.text.isEmpty)) {
       _showMessage('Nhập email và mật khẩu do quản trị viên cấp.');
@@ -39,16 +40,17 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
     try {
       final repository = AuthRepository();
-      if (_isStaffLogin) {
+      if (_isStaffLogin || _useEmailPassword) {
         await repository.signInWithPassword(
           email: _emailController.text,
           password: _passwordController.text,
         );
+        await repository.ensureCustomerProfile();
         final roles = await repository.getCurrentRoles();
         final isStaff = roles.any(
           {'Nhân viên', 'Quản lý', 'Chủ cửa hàng'}.contains,
         );
-        if (!isStaff) {
+        if (_isStaffLogin && !isStaff) {
           await repository.signOut();
           throw const AuthException(
             'Tài khoản chưa được cấp vai trò nhân viên hoặc quản lý.',
@@ -110,11 +112,11 @@ class _LoginScreenState extends State<LoginScreen> {
                   ],
                   selected: {_isStaffLogin},
                   onSelectionChanged: (selection) {
-                    setState(() => _isStaffLogin = selection.first);
+                    setState(() { _isStaffLogin = selection.first; _useEmailPassword = selection.first; });
                   },
                 ),
                 const SizedBox(height: 28),
-                if (_isStaffLogin) ...[
+                if (_isStaffLogin || _useEmailPassword) ...[
                   TextField(
                     controller: _emailController,
                     keyboardType: TextInputType.emailAddress,
@@ -151,8 +153,13 @@ class _LoginScreenState extends State<LoginScreen> {
                   icon: _isLoading
                       ? const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2))
                       : Icon(_isStaffLogin ? Icons.login : Icons.g_mobiledata, size: 30),
-                  label: Text(_isStaffLogin ? 'Đăng nhập tài khoản' : 'Tiếp tục với Google'),
+                  label: Text((_isStaffLogin || _useEmailPassword) ? 'Đăng nhập tài khoản' : 'Tiếp tục với Google'),
                 ),
+                if (!_isStaffLogin)
+                  TextButton(
+                    onPressed: () => setState(() => _useEmailPassword = !_useEmailPassword),
+                    child: Text(_useEmailPassword ? 'Đăng nhập bằng Google' : 'Đăng nhập bằng Gmail và mật khẩu'),
+                  ),
                 if (!_isStaffLogin) ...[
                   const SizedBox(height: 16),
                   Text(

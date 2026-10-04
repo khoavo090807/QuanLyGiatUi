@@ -68,15 +68,9 @@ class _LoyaltyScreenState extends State<LoyaltyScreen> {
                 const SizedBox(height: 28),
                 Text('Quyền lợi thành viên', style: AppTypography.heading3),
                 const SizedBox(height: 16),
-                _buildBenefit(Icons.percent, 'Tích điểm theo đơn hàng', 'Điểm được cập nhật sau khi đơn hoàn tất.'),
-                _buildBenefit(Icons.local_shipping_outlined, 'Ưu đãi giao nhận', 'Mã giảm giá được cửa hàng phát hành theo từng chương trình.'),
-                const SizedBox(height: 20),
-                Text(AppStrings.vouchers, style: AppTypography.heading3),
-                const SizedBox(height: 12),
-                if (summary.vouchers.isEmpty)
-                  const Text('Hiện chưa có mã giảm giá khả dụng.')
-                else
-                  ...summary.vouchers.map(_buildVoucher),
+                _buildBenefit(Icons.percent, 'Tích điểm theo đơn hàng', 'Điểm được cộng khi đơn hàng ở trạng thái "Đã giao".'),
+                _buildBenefit(Icons.local_offer_outlined, 'Sử dụng điểm giảm tiền', 'Bật tính năng này khi đặt đơn để trừ tiền từ điểm tích lũy của bạn.'),
+                _buildBenefit(Icons.card_giftcard, 'Đổi quà tặng', 'Sử dụng điểm tích lũy để đổi quà tặng hấp dẫn.'),
               ],
             ),
           );
@@ -86,7 +80,6 @@ class _LoyaltyScreenState extends State<LoyaltyScreen> {
   }
 
   Widget _buildPointsCard(int points) {
-    final progress = (points / 2000).clamp(0.0, 1.0);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(24),
@@ -107,19 +100,9 @@ class _LoyaltyScreenState extends State<LoyaltyScreen> {
           const SizedBox(height: 16),
           Text('$points', style: AppTypography.heading1.copyWith(color: Colors.white, fontSize: 40)),
           Text('điểm', style: AppTypography.bodySmall.copyWith(color: Colors.white.withValues(alpha: 0.8))),
-          const SizedBox(height: 24),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              value: progress,
-              minHeight: 8,
-              backgroundColor: Colors.white.withValues(alpha: 0.2),
-              valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
-            ),
-          ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           Text(
-            '${2000 - points.clamp(0, 2000)} điểm để lên hạng tiếp theo',
+            'Có thể dùng để giảm tiền khi đặt đơn hàng',
             style: AppTypography.caption.copyWith(color: Colors.white.withValues(alpha: 0.8)),
           ),
         ],
@@ -143,35 +126,6 @@ class _LoyaltyScreenState extends State<LoyaltyScreen> {
             Text(title, style: AppTypography.title),
             const SizedBox(height: 4),
             Text(subtitle, style: AppTypography.bodySmall),
-          ])),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildVoucher(LoyaltyVoucher voucher) {
-    final isPercent = voucher.discountType == 'Phần trăm';
-    final discount = isPercent
-        ? '${voucher.discountValue.toStringAsFixed(0)}%'
-        : '${voucher.discountValue.toStringAsFixed(0)} đ';
-    final condition = voucher.minimumOrder == null
-        ? voucher.condition ?? ''
-        : '${voucher.condition ?? ''} Từ ${voucher.minimumOrder!.toStringAsFixed(0)} đ';
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.divider)),
-      child: Row(
-        children: [
-          const Icon(Icons.confirmation_number_outlined, color: AppColors.primary, size: 34),
-          const SizedBox(width: 12),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(voucher.title, style: AppTypography.title),
-            const SizedBox(height: 4),
-            Text('Giảm $discount', style: AppTypography.bodySmall),
-            Text(condition, style: AppTypography.caption),
-            Text('Mã: ${voucher.code}', style: AppTypography.caption.copyWith(color: AppColors.primary, fontWeight: FontWeight.bold)),
           ])),
         ],
       ),

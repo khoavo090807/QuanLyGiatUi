@@ -6,6 +6,7 @@ import 'package:app_quanly_giaiui/core/theme/app_typography.dart';
 import 'package:app_quanly_giaiui/features/order/data/order_repository.dart';
 import 'package:app_quanly_giaiui/features/order/domain/cart_item.dart';
 import 'package:app_quanly_giaiui/features/order/domain/laundry_order_pricing.dart';
+import 'package:app_quanly_giaiui/features/loyalty/data/loyalty_repository.dart';
 import 'package:app_quanly_giaiui/features/profile/data/address_repository.dart';
 import 'package:app_quanly_giaiui/features/profile/data/current_location_service.dart';
 
@@ -22,7 +23,9 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   final _formKey = GlobalKey<FormState>();
   final _measurementController = TextEditingController();
   final _notesController = TextEditingController();
+  final _promotionController = TextEditingController();
   final _repository = OrderRepository();
+  final _loyaltyRepository = LoyaltyRepository();
   final _addressRepository = AddressRepository();
   final _currentLocationService = CurrentLocationService();
   late Future<_OrderFormData> _formDataFuture;
@@ -32,10 +35,15 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   CustomerAddress? _selectedAddress;
   CurrentLocationResult? _currentPickupLocation;
   bool _isResolvingLocation = false;
+  String _paymentMethod = 'Tiền mặt';
   String _pickupMethod = 'Tại cửa hàng';
   String _serviceSearchQuery = '';
   bool _provideLaundryDetails = false;
   late DateTime _appointment;
+  bool _usePointsForDiscount = false;
+  int _availablePoints = 0;
+  bool _isLoadingPoints = true;
+  bool _pointsLoadFailed = false;
 
   @override
   void initState() {
@@ -43,6 +51,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     final tomorrow = DateTime.now().add(const Duration(days: 1));
     _appointment = DateTime(tomorrow.year, tomorrow.month, tomorrow.day, 10);
     _formDataFuture = _loadFormData();
+    _loadAvailablePoints();
   }
 
   Future<_OrderFormData> _loadFormData() async {
@@ -52,10 +61,19 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
         .getAddresses()
         .timeout(timeout)
         .catchError((_) => <CustomerAddress>[]);
-    final result = await Future.wait<dynamic>([pricesFuture, addressesFuture]);
+    final vouchersFuture = _loyaltyRepository
+        .getSummary()
+        .then((summary) => summary.vouchers)
+        .catchError((_) => <LoyaltyVoucher>[]);
+    final result = await Future.wait<dynamic>([
+      pricesFuture,
+      addressesFuture,
+      vouchersFuture,
+    ]);
     return _OrderFormData(
       prices: result[0] as List<LaundryPriceOption>,
       addresses: result[1] as List<CustomerAddress>,
+      vouchers: result[2] as List<LoyaltyVoucher>,
     );
   }
 
@@ -63,6 +81,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   void dispose() {
     _measurementController.dispose();
     _notesController.dispose();
+    _promotionController.dispose();
     super.dispose();
   }
 
@@ -81,6 +100,85 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       total += item.estimatedTotalMinorUnits;
     }
     return total;
+  }
+
+  int get _pointsToUse => LaundryOrderPricing.redeemablePoints(
+    availablePoints: _availablePoints,
+    subtotalMinorUnits: _cartTotalMinorUnits,
+  );
+
+  int get _pointsDiscount {
+    if (!_usePointsForDiscount) return 0;
+    return LaundryOrderPricing.pointsDiscountMinorUnits(_pointsToUse);
+  }
+
+  num _promotionDiscount(LoyaltyVoucher voucher) {
+    final subtotal = _cartTotalMinorUnits / 100;
+    if (!_isVoucherEligible(voucher)) return 0;
+    final discount = voucher.discountType == 'Phần trăm'
+        ? subtotal * voucher.discountValue / 100
+        : voucher.discountValue;
+    return discount.clamp(0, voucher.maximumDiscount ?? discount);
+  }
+
+  bool _isVoucherEligible(LoyaltyVoucher voucher) =>
+      voucher.minimumOrder == null ||
+      _cartTotalMinorUnits / 100 >= voucher.minimumOrder!;
+
+  String _voucherCondition(LoyaltyVoucher voucher) {
+    final notes = <String>[];
+    if (voucher.minimumOrder != null) {
+      notes.add('Đơn tối thiểu ${_formatVnd(voucher.minimumOrder!)}');
+    }
+    final condition = voucher.condition?.trim();
+    if (condition != null && condition.isNotEmpty) notes.add(condition);
+    return notes.isEmpty
+        ? 'Không có điều kiện bổ sung'
+        : 'Điều kiện: ${notes.join(' · ')}';
+  }
+
+  int _finalTotal(List<LoyaltyVoucher> vouchers) {
+    final selectedVoucher = vouchers
+        .where(
+          (voucher) =>
+              voucher.code == _promotionController.text &&
+              _isVoucherEligible(voucher),
+        )
+        .firstOrNull;
+    final promotionDiscountMinorUnits = selectedVoucher == null
+        ? 0
+        : (_promotionDiscount(selectedVoucher) * 100).round();
+    final totalDiscountMinorUnits = (_pointsDiscount +
+            promotionDiscountMinorUnits)
+        .clamp(0, _cartTotalMinorUnits);
+    return _cartTotalMinorUnits - totalDiscountMinorUnits;
+  }
+
+  Future<void> _loadAvailablePoints() async {
+    try {
+      final summary = await _loyaltyRepository.getSummary();
+      if (!mounted) return;
+      setState(() {
+        _availablePoints = summary.points;
+        _isLoadingPoints = false;
+        _pointsLoadFailed = false;
+        if (_availablePoints == 0) _usePointsForDiscount = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingPoints = false;
+        _pointsLoadFailed = true;
+      });
+    }
+  }
+
+  void _retryLoadingPoints() {
+    setState(() {
+      _isLoadingPoints = true;
+      _pointsLoadFailed = false;
+    });
+    _loadAvailablePoints();
   }
 
   void _addToCart() {
@@ -274,7 +372,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     });
   }
 
-  void _continueToSummary() {
+  void _continueToSummary(List<LoyaltyVoucher> vouchers) {
     if (_provideLaundryDetails && _cart.isEmpty) {
       _showMessage(
         'Thêm ít nhất một loại đồ hoặc bỏ chọn mục nhập thông tin đồ giặt.',
@@ -288,17 +386,32 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       return;
     }
 
+    final selectedVoucher = vouchers
+        .where(
+          (voucher) =>
+              voucher.code == _promotionController.text &&
+              _isVoucherEligible(voucher),
+        )
+        .firstOrNull;
     context.pushNamed(
       AppRoutes.orderSummary,
       extra: {
         'cart': _cart,
         'provideLaundryDetails': _provideLaundryDetails,
+        'paymentMethod': _paymentMethod,
         'pickupMethod': _pickupMethod,
         'address': _pickupMethod == 'Tại nhà'
             ? _currentPickupLocation?.address ?? _selectedAddress?.address
             : null,
         'appointment': _appointment,
         'notes': _notesController.text.trim(),
+        'usePoints': _provideLaundryDetails && _usePointsForDiscount,
+        'pointsUsedEstimate': _pointsToUse,
+        'pointsDiscountEstimateVnd': _pointsDiscount / 100,
+        'promotionCode': selectedVoucher?.code ?? '',
+        'promotionDiscountEstimateVnd': selectedVoucher == null
+            ? 0
+            : _promotionDiscount(selectedVoucher),
       },
     );
   }
@@ -325,6 +438,10 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
 
           final allPrices = snapshot.data!.prices;
           final addresses = snapshot.data!.addresses;
+          final vouchers = List<LoyaltyVoucher>.from(snapshot.data!.vouchers)
+            ..sort(
+              (a, b) => _promotionDiscount(b).compareTo(_promotionDiscount(a)),
+            );
           if (_provideLaundryDetails && allPrices.isEmpty) {
             return const Center(child: Text('Hiện chưa có bảng giá khả dụng.'));
           }
@@ -497,6 +614,103 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                       ),
                     ),
                     _EstimateRow(totalMinorUnits: _cartTotalMinorUnits),
+                    const SizedBox(height: 16),
+                    _PointsDiscountRow(
+                      usePoints: _usePointsForDiscount,
+                      availablePoints: _availablePoints,
+                      pointsToUse: _pointsToUse,
+                      isLoading: _isLoadingPoints,
+                      loadFailed: _pointsLoadFailed,
+                      onRetry: _retryLoadingPoints,
+                      onChanged: (value) =>
+                          setState(() => _usePointsForDiscount = value),
+                      discountAmount: _pointsDiscount,
+                      finalTotal: _finalTotal(vouchers),
+                    ),
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<String>(
+                      initialValue: vouchers
+                          .where(
+                            (item) =>
+                                item.code == _promotionController.text &&
+                                _isVoucherEligible(item),
+                          )
+                          .firstOrNull
+                          ?.code ??
+                          '',
+                      isExpanded: true,
+                      itemHeight: null,
+                      menuMaxHeight: 360,
+                      decoration: const InputDecoration(
+                        labelText: 'Chọn ưu đãi',
+                        prefixIcon: Icon(Icons.confirmation_number_outlined),
+                      ),
+                      selectedItemBuilder: (context) => [
+                        const Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text('Không sử dụng mã giảm giá'),
+                        ),
+                        ...vouchers.map(
+                            (voucher) => Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                voucher.title,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ),
+                      ],
+                      items: [
+                        const DropdownMenuItem<String>(
+                          value: '',
+                          child: Text('Không sử dụng mã giảm giá'),
+                        ),
+                        ...vouchers.map((voucher) {
+                          final isEligible = _isVoucherEligible(voucher);
+                          final discount = _promotionDiscount(voucher);
+                          final isBest =
+                              voucher == vouchers.first && discount > 0;
+                          return DropdownMenuItem<String>(
+                            value: voucher.code,
+                            enabled: isEligible,
+                            child: Opacity(
+                              opacity: isEligible ? 1 : 0.45,
+                              child: SizedBox(
+                                width: MediaQuery.sizeOf(context).width - 96,
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      voucher.title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    Text(
+                                      '${voucher.code} · giảm ${_formatVnd(discount)}'
+                                      '${isBest ? ' · Ưu đãi tốt nhất' : ''}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    Text(
+                                      _voucherCondition(voucher),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: AppColors.textSecondary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        }),
+                      ],
+                      onChanged: (code) => setState(
+                        () => _promotionController.text = code ?? '',
+                      ),
+                    ),
                   ],
                 ],
                 const SizedBox(height: 28),
@@ -612,6 +826,33 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                   ),
                 ],
                 const SizedBox(height: 20),
+                Text('Hình thức thanh toán', style: AppTypography.heading3),
+                const SizedBox(height: 12),
+                SegmentedButton<String>(
+                  segments: const [
+                    ButtonSegment(
+                      value: 'Tiền mặt',
+                      icon: Icon(Icons.payments_outlined),
+                      label: Text('Tiền mặt'),
+                    ),
+                    ButtonSegment(
+                      value: 'Chuyển khoản',
+                      icon: Icon(Icons.account_balance_outlined),
+                      label: Text('Chuyển khoản'),
+                    ),
+                  ],
+                  selected: {_paymentMethod},
+                  onSelectionChanged: (selection) {
+                    setState(() => _paymentMethod = selection.first);
+                  },
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Phương thức đã chọn sẽ được dùng khi hóa đơn sẵn sàng; '
+                  'số tiền cuối cùng được xác nhận sau khi cửa hàng kiểm nhận.',
+                  style: TextStyle(color: AppColors.textSecondary),
+                ),
+                const SizedBox(height: 20),
                 OutlinedButton.icon(
                   onPressed: _chooseAppointment,
                   icon: const Icon(Icons.calendar_month_outlined),
@@ -631,7 +872,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                 ),
                 const SizedBox(height: 20),
                 FilledButton.icon(
-                  onPressed: _continueToSummary,
+                  onPressed: () => _continueToSummary(vouchers),
                   icon: const Icon(Icons.receipt_long_outlined),
                   label: const Text('Xem xác nhận đơn'),
                 ),
@@ -655,10 +896,15 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
 }
 
 class _OrderFormData {
-  const _OrderFormData({required this.prices, required this.addresses});
+  const _OrderFormData({
+    required this.prices,
+    required this.addresses,
+    required this.vouchers,
+  });
 
   final List<LaundryPriceOption> prices;
   final List<CustomerAddress> addresses;
+  final List<LoyaltyVoucher> vouchers;
 }
 
 class _CartItemTile extends StatelessWidget {
@@ -728,6 +974,123 @@ class _LoadError extends StatelessWidget {
             OutlinedButton(onPressed: onRetry, child: const Text('Thử lại')),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _PointsDiscountRow extends StatelessWidget {
+  const _PointsDiscountRow({
+    required this.usePoints,
+    required this.availablePoints,
+    required this.pointsToUse,
+    required this.isLoading,
+    required this.loadFailed,
+    required this.onRetry,
+    required this.onChanged,
+    required this.discountAmount,
+    required this.finalTotal,
+  });
+
+  final bool usePoints;
+  final int availablePoints;
+  final int pointsToUse;
+  final bool isLoading;
+  final bool loadFailed;
+  final VoidCallback onRetry;
+  final ValueChanged<bool> onChanged;
+  final int discountAmount;
+  final int finalTotal;
+
+  String _formatVnd(num value) => '${(value / 100).toStringAsFixed(0)} đ';
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: usePoints ? AppColors.primaryLight : AppColors.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: usePoints ? AppColors.primary : AppColors.divider,
+        ),
+      ),
+      child: Row(
+        children: [
+          Switch(
+            value: usePoints,
+            onChanged: isLoading || loadFailed || availablePoints == 0
+                ? null
+                : onChanged,
+            activeThumbColor: AppColors.primary,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Sử dụng điểm tích lũy', style: AppTypography.title),
+                if (isLoading)
+                  Text('Đang tải số dư điểm...', style: AppTypography.caption)
+                else if (loadFailed) ...[
+                  Text(
+                    'Không tải được số dư điểm.',
+                    style: AppTypography.caption,
+                  ),
+                  TextButton.icon(
+                    onPressed: onRetry,
+                    icon: const Icon(Icons.refresh, size: 16),
+                    label: const Text('Thử lại'),
+                  ),
+                ] else if (usePoints && discountAmount > 0) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Giảm ${_formatVnd(discountAmount)}',
+                    style: AppTypography.bodySmall.copyWith(
+                      color: AppColors.success,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  Text(
+                    'Dùng $pointsToUse điểm · còn ${availablePoints - pointsToUse} điểm',
+                    style: AppTypography.caption,
+                  ),
+                ] else if (usePoints)
+                  Text(
+                    availablePoints == 0
+                        ? 'Không có điểm để sử dụng'
+                        : 'Đơn hàng chưa đủ giá trị để dùng điểm.',
+                    style: AppTypography.caption,
+                  )
+                else if (availablePoints == 0)
+                  Text('Không có điểm để sử dụng', style: AppTypography.caption)
+                else ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    '$availablePoints điểm khả dụng',
+                    style: AppTypography.caption,
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (usePoints) ...[
+            const SizedBox(width: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text('Tổng cộng', style: AppTypography.bodySmall),
+                Text(
+                  _formatVnd(finalTotal),
+                  style: AppTypography.title.copyWith(
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
       ),
     );
   }

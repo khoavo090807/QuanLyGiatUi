@@ -19,12 +19,15 @@ import 'package:app_quanly_giaiui/features/order/screens/order_summary_screen.da
 import 'package:app_quanly_giaiui/features/tracking/screens/tracking_screen.dart';
 import 'package:app_quanly_giaiui/features/payment/screens/payment_screen.dart';
 import 'package:app_quanly_giaiui/features/loyalty/screens/loyalty_screen.dart';
+import 'package:app_quanly_giaiui/features/loyalty/screens/vouchers_screen.dart';
 import 'package:app_quanly_giaiui/features/staff/screens/staff_order_queue_screen.dart';
 import 'package:app_quanly_giaiui/features/profile/screens/address_book_screen.dart';
+import 'package:app_quanly_giaiui/features/profile/screens/edit_profile_screen.dart';
+import 'package:app_quanly_giaiui/features/review/screens/review_screen.dart';
 import 'app_routes.dart';
 
 class AppRouter {
-  static final _rootNavigatorKey = GlobalKey<NavigatorState>();
+  static final rootNavigatorKey = GlobalKey<NavigatorState>();
   static final _authRefreshListenable = _AuthRefreshListenable();
   static List<String>? _cachedRoles;
 
@@ -48,7 +51,7 @@ class AppRouter {
   }
 
   static final GoRouter router = GoRouter(
-    navigatorKey: _rootNavigatorKey,
+    navigatorKey: rootNavigatorKey,
     refreshListenable: _authRefreshListenable,
     initialLocation: AppRoutes.splashPath,
     redirect: _redirect,
@@ -190,12 +193,23 @@ class AppRouter {
         builder: (context, state) =>
             PaymentScreen(orderId: state.pathParameters['id'] ?? 'DH001'),
       ),
+      GoRoute(
+        path: '/review/:id',
+        name: AppRoutes.review,
+        builder: (context, state) =>
+            ReviewScreen(orderId: state.pathParameters['id'] ?? ''),
+      ),
 
       // Loyalty
       GoRoute(
         path: '/loyalty',
         name: AppRoutes.loyalty,
         builder: (context, state) => const LoyaltyScreen(),
+      ),
+      GoRoute(
+        path: '/vouchers',
+        name: AppRoutes.vouchers,
+        builder: (context, state) => const VouchersScreen(),
       ),
       GoRoute(
         path: AppRoutes.staffQueuePath,
@@ -206,6 +220,11 @@ class AppRouter {
         path: AppRoutes.addressBookPath,
         name: AppRoutes.addressBook,
         builder: (context, state) => const AddressBookScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.editProfilePath,
+        name: AppRoutes.editProfile,
+        builder: (context, state) => const EditProfileScreen(),
       ),
     ],
     // Handle error routes

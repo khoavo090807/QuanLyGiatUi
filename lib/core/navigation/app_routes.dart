@@ -26,9 +26,12 @@ class AppRoutes {
   // Post-order
   static const String trackingDetail = 'tracking-detail';
   static const String payment = 'payment';
+  static const String review = 'review';
   static const String loyalty = 'loyalty';
+  static const String vouchers = 'vouchers';
   static const String staffQueue = 'staff-order-queue';
   static const String addressBook = 'address-book';
+  static const String editProfile = 'edit-profile';
   
   // Pre-defined paths
   static const String splashPath = '/';
@@ -51,6 +54,8 @@ class AppRoutes {
   
   static const String trackingDetailPath = 'tracking-detail/:id'; // Relative to my-orders
   static const String paymentPath = 'payment/:id'; // Relative to tracking detail
+  static const String reviewPath = 'review/:id';
   static const String staffQueuePath = '/staff/orders';
   static const String addressBookPath = '/profile/addresses';
+  static const String editProfilePath = '/profile/edit';
 }

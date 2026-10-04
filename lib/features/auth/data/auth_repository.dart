@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:app_quanly_giaiui/core/config/supabase_config.dart';
@@ -17,7 +18,9 @@ class AuthRepository {
 
     final account = await _client
         .from('taikhoan')
-        .select('email,sodienthoai,khachhang(hoten),nhanvien(hoten)')
+        .select(
+          'email,sodienthoai,khachhang(hoten,diachi,avatarurl),nhanvien(hoten)',
+        )
         .eq('userauthid', user.id)
         .maybeSingle();
     if (account == null) return null;
@@ -34,15 +37,15 @@ class AuthRepository {
           'Tài khoản',
       phone: account['sodienthoai'] as String? ?? user.phone,
       email: account['email'] as String? ?? user.email,
+      address: customer?['diachi'] as String?,
+      avatarUrl: customer?['avatarurl'] as String?,
       roles: roles,
     );
   }
 
   Future<List<String>> getCurrentRoles() async {
     final roles = await _client.rpc('get_current_roles');
-    return (roles as List<dynamic>)
-      .whereType<String>()
-      .toList(growable: false);
+    return (roles as List<dynamic>).whereType<String>().toList(growable: false);
   }
 
   static SupabaseClient _configuredClient() {
@@ -113,6 +116,28 @@ class AuthRepository {
     );
   }
 
+  Future<void> signUpCustomer({
+    required String fullName,
+    required String email,
+    required String password,
+  }) async {
+    final response = await _client.auth.signUp(
+      email: email.trim(),
+      password: password,
+      data: {'full_name': fullName.trim()},
+    );
+    if (response.session != null) await ensureCustomerProfile();
+  }
+
+  Future<void> ensureCustomerProfile() async {
+    final user = _client.auth.currentUser;
+    if (user == null) return;
+    await _client.rpc(
+      'complete_google_customer_profile',
+      params: {'p_full_name': user.userMetadata?['full_name'] ?? user.email},
+    );
+  }
+
   Future<void> requestPasswordReset(String email) async {
     await _client.auth.resetPasswordForEmail(
       email.trim(),
@@ -122,7 +147,9 @@ class AuthRepository {
 
   Future<void> updatePassword(String password) async {
     if (_client.auth.currentSession == null) {
-      throw const AuthException('Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.');
+      throw const AuthException(
+        'Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.',
+      );
     }
     await _client.auth.updateUser(UserAttributes(password: password));
   }
@@ -138,12 +165,12 @@ class AuthRepository {
         );
     if (!isGoogleUser) return;
 
-    await _client.rpc(
-      'complete_google_customer_profile',
-      params: {
-        'p_full_name': user.userMetadata?['full_name'],
-      },
-    ).timeout(const Duration(seconds: 10));
+    await _client
+        .rpc(
+          'complete_google_customer_profile',
+          params: {'p_full_name': user.userMetadata?['full_name']},
+        )
+        .timeout(const Duration(seconds: 10));
   }
 
   Future<void> verifyPhoneOtp({
@@ -170,6 +197,55 @@ class AuthRepository {
   }
 
   Future<void> signOut() => _client.auth.signOut();
+
+  Future<void> updateCustomerProfile({
+    required String fullName,
+    String? email,
+    String? phone,
+    String? address,
+  }) => _client.rpc(
+    'update_customer_profile',
+    params: {
+      'p_full_name': fullName.trim(),
+      'p_email': email?.trim(),
+      'p_phone': phone?.trim(),
+      'p_address': address?.trim(),
+    },
+  );
+
+  Future<String> uploadAvatar(Uint8List bytes, String extension) async {
+    final user = _client.auth.currentUser;
+    if (user == null) throw const AuthException('Bạn cần đăng nhập.');
+    final path =
+        '${user.id}/avatar-${DateTime.now().microsecondsSinceEpoch}.$extension';
+    final contentType = extension == 'jpg' || extension == 'jpeg'
+        ? 'image/jpeg'
+        : 'image/$extension';
+    await _client.storage
+        .from('avatars')
+        .uploadBinary(
+          path,
+          bytes,
+          fileOptions: FileOptions(upsert: true, contentType: contentType),
+        );
+    final url = _client.storage.from('avatars').getPublicUrl(path);
+    final profile = await getCurrentProfile();
+    await _client.rpc(
+      'update_customer_profile_with_avatar',
+      params: {
+        'p_full_name':
+            profile?.displayName ??
+            user.userMetadata?['full_name'] ??
+            user.email ??
+            'Khách hàng',
+        'p_email': profile?.email ?? user.email,
+        'p_phone': profile?.phone ?? user.phone,
+        'p_address': profile?.address,
+        'p_avatar_url': url,
+      },
+    );
+    return url;
+  }
 }
 
 class AuthenticatedProfile {
@@ -177,11 +253,15 @@ class AuthenticatedProfile {
     required this.displayName,
     required this.phone,
     required this.email,
+    this.address,
+    this.avatarUrl,
     this.roles = const <String>[],
   });
 
   final String displayName;
   final String? phone;
   final String? email;
+  final String? address;
+  final String? avatarUrl;
   final List<String> roles;
 }

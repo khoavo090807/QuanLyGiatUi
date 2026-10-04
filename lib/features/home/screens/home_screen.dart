@@ -16,14 +16,13 @@ class HomeScreen extends StatefulWidget {
     super.key,
   });
 
-
   final ValueNotifier<int> unreadNotificationCount;
   final VoidCallback onOpenNotifications;
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  State<HomeScreen> createState() => HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class HomeScreenState extends State<HomeScreen> {
   final _repository = OrderRepository();
   final _authRepository = AuthRepository();
   final _notificationRepository = NotificationRepository();
@@ -39,6 +38,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final prices = await _repository.getActivePrices();
     List<LaundryOrderRecord> orders = const [];
     List<String> roles = const [];
+    AuthenticatedProfile? profile;
 
     try {
       orders = await _repository.getCustomerHistory();
@@ -51,13 +51,30 @@ class _HomeScreenState extends State<HomeScreen> {
       // Missing account/role data should not block the customer UI.
     }
     try {
+      profile = await _authRepository.getCurrentProfile();
+    } catch (_) {
+      // Profile data should not block the home screen.
+    }
+    try {
       final unreadCount = await _notificationRepository.getUnreadCount();
       if (mounted) widget.unreadNotificationCount.value = unreadCount;
     } catch (_) {
       if (mounted) widget.unreadNotificationCount.value = 0;
     }
 
-    return _HomeData(prices: prices, orders: orders, roles: roles);
+    return _HomeData(
+      prices: prices,
+      orders: orders,
+      roles: roles,
+      profile: profile,
+    );
+  }
+
+  void refresh() {
+    final future = _loadHomeData();
+    setState(() {
+      _homeData = future;
+    });
   }
 
   @override
@@ -92,18 +109,15 @@ class _HomeScreenState extends State<HomeScreen> {
             final data = snapshot.data!;
             return RefreshIndicator(
               onRefresh: () async {
-                final future = _loadHomeData();
-                setState(() {
-                  _homeData = future;
-                });
-                await future;
+                refresh();
+                await _homeData;
               },
               child: SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildHeader(context),
+                    _buildHeader(context, data.profile),
                     const SizedBox(height: 16),
                     if (data.roles.any(
                       {'Nhân viên', 'Quản lý', 'Chủ cửa hàng'}.contains,
@@ -138,7 +152,8 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildHeader(BuildContext context) {
+  Widget _buildHeader(BuildContext context, AuthenticatedProfile? profile) {
+    final avatarUrl = profile?.avatarUrl;
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
       child: Row(
@@ -146,7 +161,10 @@ class _HomeScreenState extends State<HomeScreen> {
           CircleAvatar(
             radius: 25,
             backgroundColor: AppColors.primaryLight,
-            child: const Icon(Icons.person, color: AppColors.primary, size: 28),
+            backgroundImage: avatarUrl == null ? null : NetworkImage(avatarUrl),
+            child: avatarUrl == null
+                ? const Icon(Icons.person, color: AppColors.primary, size: 28)
+                : null,
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -154,7 +172,7 @@ class _HomeScreenState extends State<HomeScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '${AppStrings.hello}Khách hàng',
+                  '${AppStrings.hello}${profile?.displayName ?? 'Khách hàng'}',
                   style: AppTypography.title,
                 ),
                 const SizedBox(height: 2),
@@ -409,9 +427,11 @@ class _HomeData {
     required this.prices,
     required this.orders,
     required this.roles,
+    required this.profile,
   });
 
   final List<LaundryPriceOption> prices;
   final List<LaundryOrderRecord> orders;
   final List<String> roles;
+  final AuthenticatedProfile? profile;
 }

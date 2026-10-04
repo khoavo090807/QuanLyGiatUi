@@ -5,6 +5,7 @@ import 'package:app_quanly_giaiui/core/navigation/app_routes.dart';
 import 'package:app_quanly_giaiui/core/theme/app_colors.dart';
 import 'package:app_quanly_giaiui/core/theme/app_typography.dart';
 import 'package:app_quanly_giaiui/features/auth/data/auth_repository.dart';
+import 'package:app_quanly_giaiui/features/notification/services/notification_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -15,12 +16,27 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   final _authRepository = AuthRepository();
+  final _notificationService = NotificationService.instance;
   late Future<AuthenticatedProfile?> _profileFuture;
+  bool _notificationEnabled = true;
 
   @override
   void initState() {
     super.initState();
     _profileFuture = _authRepository.getCurrentProfile();
+    _loadNotificationSetting();
+  }
+
+  Future<void> _loadNotificationSetting() async {
+    final enabled = await _notificationService.isNotificationEnabled();
+    if (mounted) {
+      setState(() => _notificationEnabled = enabled);
+    }
+  }
+
+  Future<void> _toggleNotification(bool enabled) async {
+    await _notificationService.setNotificationEnabled(enabled);
+    setState(() => _notificationEnabled = enabled);
   }
 
   @override
@@ -60,11 +76,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
               CircleAvatar(
                 radius: 35,
                 backgroundColor: AppColors.primaryLight,
-                child: const Icon(
-                  Icons.person,
-                  size: 40,
-                  color: AppColors.primary,
-                ),
+                backgroundImage: profile?.avatarUrl == null
+                    ? null
+                    : NetworkImage(profile!.avatarUrl!),
+                child: profile?.avatarUrl == null
+                    ? const Icon(
+                        Icons.person,
+                        size: 40,
+                        color: AppColors.primary,
+                      )
+                    : null,
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -123,6 +144,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
       children: [
         _buildMenuGroup([
           _MenuItem(
+            icon: Icons.person_outline,
+            title: AppStrings.editProfile,
+            onTap: () async {
+              await context.pushNamed(AppRoutes.editProfile);
+              if (mounted) {
+                setState(() {
+                  _profileFuture = _authRepository.getCurrentProfile();
+                });
+              }
+            },
+          ),
+          _MenuItem(
             icon: Icons.location_on_outlined,
             title: AppStrings.addresses,
               onTap: () => context.pushNamed(AppRoutes.addressBook),
@@ -135,17 +168,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _MenuItem(
             icon: Icons.card_giftcard_rounded,
             title: AppStrings.vouchers,
-            onTap: () => context.pushNamed(AppRoutes.loyalty),
+            onTap: () => context.pushNamed(AppRoutes.vouchers),
           ),
         ]),
         const SizedBox(height: 16),
-        _buildMenuGroup([
-          _MenuItem(
-            icon: Icons.notifications_active_outlined,
-            title: AppStrings.notificationSettings,
-            onTap: () {},
+        Container(
+          color: AppColors.surface,
+          child: ListTile(
+            leading: const Icon(
+              Icons.notifications_active_outlined,
+              color: AppColors.textSecondary,
+            ),
+            title: const Text(
+              'Thông báo với âm thanh',
+              style: AppTypography.title,
+            ),
+            trailing: Switch(
+              value: _notificationEnabled,
+              onChanged: _toggleNotification,
+              activeTrackColor: AppColors.primary.withValues(alpha: 0.5),
+              activeThumbColor: AppColors.primary,
+            ),
           ),
-        ]),
+        ),
         const SizedBox(height: 16),
         _buildMenuGroup([
           _MenuItem(

@@ -1,13 +1,17 @@
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:app_quanly_giaiui/features/order/domain/cart_item.dart';
+import 'package:app_quanly_giaiui/features/notification/data/notification_repository.dart';
+import 'package:app_quanly_giaiui/features/notification/services/notification_service.dart';
 
 enum LaundryBookingStatus {
   awaitingReception('ChoTiepNhan', 'Chờ tiếp nhận'),
   confirmed('DaXacNhan', 'Đã xác nhận'),
   cancelled('DaHuy', 'Đã hủy'),
   completed('HoanThanh', 'Hoàn thành'),
+  delivered('DaGiao', 'Đã giao'),
   unknown('Unknown', 'Không xác định');
 
   const LaundryBookingStatus(this.databaseValue, this.displayValue);
@@ -22,6 +26,7 @@ enum LaundryBookingStatus {
       'Đã xác nhận' => confirmed,
       'Đã hủy' => cancelled,
       'Hoàn thành' => completed,
+      'Đã giao' => delivered,
       _ => unknown,
     },
   );
@@ -32,6 +37,8 @@ class LaundryPriceOption {
     required this.priceId,
     required this.serviceId,
     required this.serviceName,
+    this.serviceDescription,
+    this.processingTimeMinutes,
     required this.itemTypeId,
     required this.itemTypeName,
     required this.unitId,
@@ -43,6 +50,8 @@ class LaundryPriceOption {
   final int priceId;
   final int serviceId;
   final String serviceName;
+  final String? serviceDescription;
+  final int? processingTimeMinutes;
   final int itemTypeId;
   final String itemTypeName;
   final int unitId;
@@ -55,6 +64,8 @@ class LaundryPriceOption {
       priceId: (json['banggiaid'] as num).toInt(),
       serviceId: (json['dichvuid'] as num).toInt(),
       serviceName: json['tendichvu'] as String,
+      serviceDescription: json['mota'] as String?,
+      processingTimeMinutes: (json['thoigiandukien'] as num?)?.toInt(),
       itemTypeId: (json['loaidogiatid'] as num).toInt(),
       itemTypeName: json['tenloaidogiat'] as String,
       unitId: (json['donvitinhid'] as num).toInt(),
@@ -71,19 +82,31 @@ class CreatedLaundryBooking {
     required this.bookingNumber,
     required this.estimatedTotalVnd,
     this.itemCount = 1,
+    this.pointsUsed = 0,
+    this.pointsDiscountVnd = 0,
+    this.finalTotalVnd,
   });
 
   final int bookingId;
   final String bookingNumber;
   final num estimatedTotalVnd;
   final int itemCount;
+  final int pointsUsed;
+  final num pointsDiscountVnd;
+  final num? finalTotalVnd;
 
   factory CreatedLaundryBooking.fromJson(Map<String, dynamic> json) {
+    final estimatedTotal = json['thanhtien'] as num;
+    final pointsDiscount = json['tiengiamdodiem'] as num? ?? 0;
     return CreatedLaundryBooking(
       bookingId: (json['bookingid'] as num).toInt(),
       bookingNumber: json['mabooking'] as String,
-      estimatedTotalVnd: json['thanhtien'] as num,
+      estimatedTotalVnd: estimatedTotal,
       itemCount: (json['itemcount'] as num?)?.toInt() ?? 1,
+      pointsUsed: (json['diemsudung'] as num?)?.toInt() ?? 0,
+      pointsDiscountVnd: pointsDiscount,
+      finalTotalVnd:
+          json['thanhtoan'] as num? ?? estimatedTotal - pointsDiscount,
     );
   }
 }
@@ -137,7 +160,10 @@ class LaundryOrderRecord {
     );
   }
 
-  factory LaundryOrderRecord.fromBookingJson(Map<String, dynamic> json) {
+  factory LaundryOrderRecord.fromBookingJson(
+    Map<String, dynamic> json, {
+    Map<String, dynamic>? linkedOrder,
+  }) {
     final details = json['ChiTietBooking'] as List<dynamic>? ?? const [];
     // Build descriptions from all items
     final descriptions = details.map((entry) {
@@ -163,10 +189,11 @@ class LaundryOrderRecord {
     );
 
     return LaundryOrderRecord(
-      orderId: null,
+      orderId: (linkedOrder?['DonHangID'] as num?)?.toInt(),
       bookingId: (json['BookingID'] as num).toInt(),
       orderNumber: json['MaBooking'] as String,
-      status: bookingStatus.displayValue,
+      status:
+          linkedOrder?['TrangThai'] as String? ?? bookingStatus.displayValue,
       totalVnd: totalVnd,
       createdAt: DateTime.parse(json['NgayTao'] as String),
       lineDescription: descriptions.isEmpty
@@ -241,9 +268,11 @@ class LaundryOrderItem {
 
 class OrderRepository {
   OrderRepository({SupabaseClient? client})
-    : _client = client ?? Supabase.instance.client;
+    : _client = client ?? Supabase.instance.client,
+      _notificationRepository = NotificationRepository(client: client);
 
   final SupabaseClient _client;
+  final NotificationRepository _notificationRepository;
 
   static String createIdempotencyKey() {
     final random = Random.secure();
@@ -262,7 +291,7 @@ class OrderRepository {
         .from('banggia')
         .select(
           'banggiaid,dichvuid,loaidogiatid,donvitinhid,dongia,'
-          'dichvu!inner(tendichvu,trangthai),'
+          'dichvu!inner(tendichvu,trangthai,mota,thoigiandukien),'
           'loaidogiat!inner(tenloaidogiat,trangthai),'
           'donvitinh!inner(tendonvitinh,kyhieu,trangthai)',
         )
@@ -279,6 +308,8 @@ class OrderRepository {
           return LaundryPriceOption.fromJson({
             ...price,
             'tendichvu': service['tendichvu'],
+            'mota': service['mota'],
+            'thoigiandukien': service['thoigiandukien'],
             'tenloaidogiat': itemType['tenloaidogiat'],
             'tendonvitinh': unit['tendonvitinh'],
             'kyhieu': unit['kyhieu'],
@@ -306,7 +337,9 @@ class OrderRepository {
           .order('NgayTao', ascending: false);
 
       return (rows as List<dynamic>)
-          .map((row) => LaundryOrderRecord.fromJson(row as Map<String, dynamic>))
+          .map(
+            (row) => LaundryOrderRecord.fromJson(row as Map<String, dynamic>),
+          )
           .toList(growable: false);
     } catch (e) {
       // Log error but don't throw, allow other queries to complete
@@ -327,7 +360,7 @@ class OrderRepository {
       getCustomerOrders().catchError((_) => <LaundryOrderRecord>[]),
       _getBookings().catchError((_) => <LaundryOrderRecord>[]),
     ]);
-    
+
     final orders = results[0];
     final orderBookingIds = orders
         .map((order) => order.bookingId)
@@ -368,6 +401,8 @@ class OrderRepository {
           .toList();
 
       final chiTietMap = <int, List<dynamic>>{};
+      final linkedOrderMap = <int, Map<String, dynamic>>{};
+
       if (bookingIds.isNotEmpty) {
         final chiTietRows = await _client
             .from('ChiTietBooking')
@@ -382,6 +417,18 @@ class OrderRepository {
           final bookingId = (detail['BookingID'] as num).toInt();
           chiTietMap.putIfAbsent(bookingId, () => []).add(detail);
         }
+
+        // Fetch linked DonHang records for all bookings at once
+        final linkedOrders = await _client
+            .from('DonHang')
+            .select('DonHangID,BookingID,TrangThai')
+            .inFilter('BookingID', bookingIds);
+
+        for (final row in linkedOrders as List<dynamic>) {
+          final order = row as Map<String, dynamic>;
+          final bookingId = (order['BookingID'] as num).toInt();
+          linkedOrderMap[bookingId] = order;
+        }
       }
 
       // Build LaundryOrderRecord with joined data
@@ -390,10 +437,11 @@ class OrderRepository {
             final booking = row as Map<String, dynamic>;
             final bookingId = (booking['BookingID'] as num).toInt();
             final details = chiTietMap[bookingId] ?? const [];
+            final linkedOrder = linkedOrderMap[bookingId];
             return LaundryOrderRecord.fromBookingJson({
               ...booking,
               'ChiTietBooking': details,
-            });
+            }, linkedOrder: linkedOrder);
           })
           .toList(growable: false);
     } catch (e) {
@@ -431,6 +479,20 @@ class OrderRepository {
       'cancel_laundry_booking',
       params: {'p_bookingid': bookingId},
     );
+
+    // Notify staff that the customer cancelled
+    try {
+      final user = _client.auth.currentUser;
+      final customerName =
+          user?.userMetadata?['full_name'] as String? ?? 'Khách hàng';
+      await _notificationRepository.notifyStaffOfNewBooking(
+        bookingId: bookingId,
+        bookingNumber: 'bị hủy',
+        customerName: customerName,
+      );
+    } catch (e) {
+      debugPrint('Lỗi gửi thông báo hủy cho nhân viên: $e');
+    }
   }
 
   Future<LaundryOrderDetails> getOrderDetails(int orderId) async {
@@ -443,22 +505,47 @@ class OrderRepository {
           'DichVu(TenDichVu),'
           'LoaiDoGiat(TenLoaiDoGiat),'
           'DonViTinh(KyHieu)'
-          '),'
-          'Booking(HinhThucNhanDo,DiaChiNhan,NgayHen,GioHen,GhiChu)',
+          ')',
         )
         .eq('DonHangID', orderId)
         .maybeSingle();
 
     if (order == null) throw StateError('Không tìm thấy đơn hàng.');
 
-    final events = await _client.rpc(
-      'get_laundry_order_status_history',
-      params: {'p_donhangid': orderId},
-    );
+    // Lấy dữ liệu Booking riêng biệt nếu BookingID tồn tại
+    Map<String, dynamic>? booking;
+    final bookingId = (order['BookingID'] as num?)?.toInt();
+    if (bookingId != null) {
+      try {
+        booking = await _client
+            .from('Booking')
+            .select('HinhThucNhanDo,DiaChiNhan,NgayHen,GioHen,GhiChu')
+            .eq('BookingID', bookingId)
+            .maybeSingle();
+      } catch (e) {
+        debugPrint('Lỗi lấy dữ liệu Booking $bookingId: $e');
+        // Tiếp tục nếu không lấy được Booking
+      }
+    }
 
-    final booking = order['Booking'] as Map<String, dynamic>?;
+    List<dynamic> eventsList = [];
+    try {
+      final eventsResponse = await _client.rpc(
+        'get_laundry_order_status_history',
+        params: {'p_donhangid': orderId},
+      );
+      if (eventsResponse is List<dynamic>) {
+        eventsList = eventsResponse;
+      }
+    } catch (e) {
+      // RPC gọi thất bại, vẫn tiếp tục với danh sách trống
+      debugPrint('Lỗi lấy lịch sử trạng thái đơn hàng $orderId: $e');
+    }
+
     DateTime? appointment;
-    if (booking != null && booking['NgayHen'] != null && booking['GioHen'] != null) {
+    if (booking != null &&
+        booking['NgayHen'] != null &&
+        booking['GioHen'] != null) {
       final date = DateTime.parse(booking['NgayHen'] as String);
       final timeStr = booking['GioHen'] as String;
       final timeParts = timeStr.split(':');
@@ -472,33 +559,47 @@ class OrderRepository {
     }
 
     final details = order['ChiTietDonHang'] as List<dynamic>? ?? [];
-    final items = details.map((entry) {
-      final detail = entry as Map<String, dynamic>;
-      final service = detail['DichVu'] as Map<String, dynamic>?;
-      final itemType = detail['LoaiDoGiat'] as Map<String, dynamic>?;
-      final unit = detail['DonViTinh'] as Map<String, dynamic>?;
-      final measurement = detail['KhoiLuong'] ?? detail['SoLuong'];
-      final unitPrice = detail['DonGia'] as num? ?? 0;
-      final total = detail['ThanhTien'] as num? ?? 0;
-      return LaundryOrderItem(
-        serviceName: service?['TenDichVu'] as String? ?? 'Dịch vụ',
-        itemTypeName: itemType?['TenLoaiDoGiat'] as String? ?? 'Đồ giặt',
-        unitSymbol: unit?['KyHieu'] as String? ?? '',
-        measurement: measurement as num,
-        unitPriceVnd: unitPrice,
-        totalVnd: total,
-      );
-    }).toList(growable: false);
+    final items = details
+        .map((entry) {
+          final detail = entry as Map<String, dynamic>;
+          final service = detail['DichVu'] as Map<String, dynamic>?;
+          final itemType = detail['LoaiDoGiat'] as Map<String, dynamic>?;
+          final unit = detail['DonViTinh'] as Map<String, dynamic>?;
+          final measurement = detail['KhoiLuong'] ?? detail['SoLuong'];
+          final unitPrice = detail['DonGia'] as num? ?? 0;
+          final total = detail['ThanhTien'] as num? ?? 0;
+          return LaundryOrderItem(
+            serviceName: service?['TenDichVu'] as String? ?? 'Dịch vụ',
+            itemTypeName: itemType?['TenLoaiDoGiat'] as String? ?? 'Đồ giặt',
+            unitSymbol: unit?['KyHieu'] as String? ?? '',
+            measurement: measurement as num,
+            unitPriceVnd: unitPrice,
+            totalVnd: total,
+          );
+        })
+        .toList(growable: false);
+
+    String? pickupMethod;
+    String? address;
+    String? notes;
+    if (booking != null) {
+      pickupMethod = booking['HinhThucNhanDo'] as String?;
+      address = booking['DiaChiNhan'] as String?;
+      notes = booking['GhiChu'] as String?;
+    }
 
     return LaundryOrderDetails(
       order: LaundryOrderRecord.fromJson(order),
-      events: (events as List<dynamic>)
-          .map((event) => LaundryOrderStatusEvent.fromJson(event as Map<String, dynamic>))
+      events: eventsList
+          .map(
+            (event) =>
+                LaundryOrderStatusEvent.fromJson(event as Map<String, dynamic>),
+          )
           .toList(growable: false),
-      pickupMethod: booking?['HinhThucNhanDo'] as String?,
-      address: booking?['DiaChiNhan'] as String?,
+      pickupMethod: pickupMethod,
+      address: address,
       appointment: appointment,
-      notes: booking?['GhiChu'] as String?,
+      notes: notes,
       items: items.isNotEmpty ? items : null,
     );
   }
@@ -520,7 +621,28 @@ class OrderRepository {
 
     if (booking == null) throw StateError('Không tìm thấy yêu cầu đặt giặt.');
 
-    final record = LaundryOrderRecord.fromBookingJson(booking);
+    final linkedOrder = await _client
+        .from('DonHang')
+        .select('DonHangID,TrangThai')
+        .eq('BookingID', bookingId)
+        .maybeSingle();
+    final record = LaundryOrderRecord.fromBookingJson(
+      booking,
+      linkedOrder: linkedOrder,
+    );
+    final linkedOrderId = (linkedOrder?['DonHangID'] as num?)?.toInt();
+    var events = <dynamic>[];
+    if (linkedOrderId != null) {
+      try {
+        final eventsResponse = await _client.rpc(
+          'get_laundry_order_status_history',
+          params: {'p_donhangid': linkedOrderId},
+        );
+        events = eventsResponse is List<dynamic> ? eventsResponse : <dynamic>[];
+      } catch (e) {
+        debugPrint('Lỗi lấy lịch sử trạng thái đơn hàng $linkedOrderId: $e');
+      }
+    }
 
     DateTime? appointment;
     if (booking['NgayHen'] != null && booking['GioHen'] != null) {
@@ -537,27 +659,34 @@ class OrderRepository {
     }
 
     final details = booking['ChiTietBooking'] as List<dynamic>? ?? [];
-    final items = details.map((entry) {
-      final detail = entry as Map<String, dynamic>;
-      final service = detail['DichVu'] as Map<String, dynamic>?;
-      final itemType = detail['LoaiDoGiat'] as Map<String, dynamic>?;
-      final unit = detail['DonViTinh'] as Map<String, dynamic>?;
-      final measurement = detail['KhoiLuong'] ?? detail['SoLuong'];
-      final unitPrice = detail['DonGia'] as num? ?? 0;
-      final total = detail['ThanhTien'] as num? ?? 0;
-      return LaundryOrderItem(
-        serviceName: service?['TenDichVu'] as String? ?? 'Dịch vụ',
-        itemTypeName: itemType?['TenLoaiDoGiat'] as String? ?? 'Đồ giặt',
-        unitSymbol: unit?['KyHieu'] as String? ?? '',
-        measurement: measurement as num,
-        unitPriceVnd: unitPrice,
-        totalVnd: total,
-      );
-    }).toList(growable: false);
+    final items = details
+        .map((entry) {
+          final detail = entry as Map<String, dynamic>;
+          final service = detail['DichVu'] as Map<String, dynamic>?;
+          final itemType = detail['LoaiDoGiat'] as Map<String, dynamic>?;
+          final unit = detail['DonViTinh'] as Map<String, dynamic>?;
+          final measurement = detail['KhoiLuong'] ?? detail['SoLuong'];
+          final unitPrice = detail['DonGia'] as num? ?? 0;
+          final total = detail['ThanhTien'] as num? ?? 0;
+          return LaundryOrderItem(
+            serviceName: service?['TenDichVu'] as String? ?? 'Dịch vụ',
+            itemTypeName: itemType?['TenLoaiDoGiat'] as String? ?? 'Đồ giặt',
+            unitSymbol: unit?['KyHieu'] as String? ?? '',
+            measurement: measurement as num,
+            unitPriceVnd: unitPrice,
+            totalVnd: total,
+          );
+        })
+        .toList(growable: false);
 
     return LaundryOrderDetails(
       order: record,
-      events: const [],
+      events: events
+          .map(
+            (event) =>
+                LaundryOrderStatusEvent.fromJson(event as Map<String, dynamic>),
+          )
+          .toList(growable: false),
       pickupMethod: booking['HinhThucNhanDo'] as String?,
       address: booking['DiaChiNhan'] as String?,
       appointment: appointment,
@@ -580,9 +709,11 @@ class OrderRepository {
       throw const AuthException('Bạn cần đăng nhập trước khi đặt đơn.');
     }
 
+    final fullName = user.userMetadata?['full_name'] as String? ?? 'Khách hàng';
+
     await _client.rpc(
       'complete_google_customer_profile',
-      params: {'p_full_name': user.userMetadata?['full_name']},
+      params: {'p_full_name': fullName},
     );
 
     final result = await _client.rpc(
@@ -599,75 +730,192 @@ class OrderRepository {
       },
     );
 
-    return CreatedLaundryBooking.fromJson(result as Map<String, dynamic>);
+    final booking = CreatedLaundryBooking.fromJson(
+      result as Map<String, dynamic>,
+    );
+
+    // Send notification to customer
+    await _notificationRepository
+        .createNotification(
+          title: 'Đơn hàng được tạo thành công',
+          message:
+              'Đơn hàng ${booking.bookingNumber} đã được đặt. Hãy theo dõi trạng thái của bạn.',
+          orderId: booking.bookingId,
+          type: 'order_created',
+        )
+        .catchError((e) => debugPrint('Lỗi gửi thông báo tạo đơn hàng: $e'));
+
+    // Send notification to staff
+    await _notificationRepository
+        .notifyStaffOfNewBooking(
+          bookingId: booking.bookingId,
+          bookingNumber: booking.bookingNumber,
+          customerName: fullName,
+        )
+        .catchError((e) => debugPrint('Lỗi thông báo cho nhân viên: $e'));
+
+    NotificationService.instance.showInApp(
+      LaundryNotification(
+        id: -booking.bookingId,
+        title: 'Đơn hàng được tạo thành công',
+        message:
+            'Đơn hàng ${booking.bookingNumber} đã được đặt. Hãy theo dõi trạng thái của bạn.',
+        sentAt: DateTime.now(),
+        isRead: false,
+        type: 'order_created',
+      ),
+    );
+
+    return booking;
   }
 
   Future<CreatedLaundryBooking> submitCartOrder({
     required Iterable<CartItem> items,
+    required bool usePoints,
+    required String paymentMethod,
     required String pickupMethod,
     required String? address,
     required DateTime appointment,
     required String notes,
     required String idempotencyKey,
+    String? promotionCode,
   }) async {
     final user = _client.auth.currentUser;
     if (user == null) {
       throw const AuthException('Bạn cần đăng nhập trước khi đặt đơn.');
     }
 
+    final fullName = user.userMetadata?['full_name'] as String? ?? 'Khách hàng';
+
     await _client.rpc(
       'complete_google_customer_profile',
-      params: {'p_full_name': user.userMetadata?['full_name']},
+      params: {'p_full_name': fullName},
     );
 
     final itemsJson = items.map((item) => item.toJson()).toList();
+    final trimmedNotes = notes.trim().isEmpty ? null : notes.trim();
 
     final result = await _client.rpc(
-      'submit_laundry_order_cart',
+      'submit_laundry_booking_request',
       params: {
         'p_items': itemsJson,
+        'p_use_points': usePoints,
+        'p_phuongthucthanhtoan': paymentMethod,
         'p_hinhthucnhando': pickupMethod,
         'p_diachinhan': address,
         'p_ngayhen': _formatDate(appointment),
         'p_giohen': _formatTime(appointment),
-        'p_ghichu': notes.trim().isEmpty ? null : notes.trim(),
+        'p_ghichu': trimmedNotes,
         'p_idempotency_key': idempotencyKey,
+        'p_makhuyenmai': promotionCode?.trim().isNotEmpty == true
+            ? promotionCode!.trim()
+            : null,
       },
     );
 
-    return CreatedLaundryBooking.fromJson(result as Map<String, dynamic>);
+    final booking = CreatedLaundryBooking.fromJson(
+      result as Map<String, dynamic>,
+    );
+
+    // Send notification to customer
+    await _notificationRepository
+        .createNotification(
+          title: 'Đơn hàng được tạo thành công',
+          message:
+              'Đơn hàng ${booking.bookingNumber} đã được đặt. Hãy theo dõi trạng thái của bạn.',
+          orderId: booking.bookingId,
+          type: 'order_created',
+        )
+        .catchError((e) => debugPrint('Lỗi gửi thông báo tạo đơn hàng: $e'));
+
+    // Send notification to staff
+    await _notificationRepository
+        .notifyStaffOfNewBooking(
+          bookingId: booking.bookingId,
+          bookingNumber: booking.bookingNumber,
+          customerName: fullName,
+        )
+        .catchError((e) => debugPrint('Lỗi thông báo cho nhân viên: $e'));
+
+    NotificationService.instance.showInApp(
+      LaundryNotification(
+        id: -booking.bookingId,
+        title: 'Đơn hàng được tạo thành công',
+        message:
+            'Đơn hàng ${booking.bookingNumber} đã được đặt. Hãy theo dõi trạng thái của bạn.',
+        sentAt: DateTime.now(),
+        isRead: false,
+        type: 'order_created',
+      ),
+    );
+
+    return booking;
   }
 
   Future<CreatedLaundryBooking> submitBookingWithoutDetails({
+    required String paymentMethod,
     required String pickupMethod,
     required String? address,
     required DateTime appointment,
     required String notes,
     required String idempotencyKey,
+    String? promotionCode,
   }) async {
     final user = _client.auth.currentUser;
     if (user == null) {
       throw const AuthException('Bạn cần đăng nhập trước khi đặt đơn.');
     }
 
+    final fullName = user.userMetadata?['full_name'] as String? ?? 'Khách hàng';
+
     await _client.rpc(
       'complete_google_customer_profile',
-      params: {'p_full_name': user.userMetadata?['full_name']},
+      params: {'p_full_name': fullName},
     );
 
     final result = await _client.rpc(
-      'submit_laundry_booking_without_details',
+      'submit_laundry_booking_request',
       params: {
+        'p_items': null,
+        'p_use_points': false,
+        'p_phuongthucthanhtoan': paymentMethod,
         'p_hinhthucnhando': pickupMethod,
         'p_diachinhan': address,
         'p_ngayhen': _formatDate(appointment),
         'p_giohen': _formatTime(appointment),
         'p_ghichu': notes.trim().isEmpty ? null : notes.trim(),
         'p_idempotency_key': idempotencyKey,
+        'p_makhuyenmai': promotionCode?.trim().isNotEmpty == true
+            ? promotionCode!.trim()
+            : null,
       },
     );
 
-    return CreatedLaundryBooking.fromJson(result as Map<String, dynamic>);
+    final booking = CreatedLaundryBooking.fromJson(
+      result as Map<String, dynamic>,
+    );
+
+    // Send notification to customer
+    await _notificationRepository
+        .createNotification(
+          title: 'Đơn hàng được tạo thành công',
+          message:
+              'Đơn hàng ${booking.bookingNumber} đã được đặt. Hãy theo dõi trạng thái của bạn.',
+          orderId: booking.bookingId,
+          type: 'order_created',
+        )
+        .catchError((e) => debugPrint('Lỗi gửi thông báo tạo đơn hàng: $e'));
+
+    // Send notification to staff
+    await _notificationRepository
+        .notifyStaffOfNewBooking(
+          bookingId: booking.bookingId,
+          bookingNumber: booking.bookingNumber,
+          customerName: fullName,
+        )
+        .catchError((e) => debugPrint('Lỗi thông báo cho nhân viên: $e'));
+
+    return booking;
   }
 
   String _formatDate(DateTime date) {

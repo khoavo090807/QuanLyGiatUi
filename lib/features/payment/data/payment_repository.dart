@@ -53,10 +53,15 @@ class PaymentInvoice {
 }
 
 class PaymentDetails {
-  const PaymentDetails({required this.invoice, required this.payments});
+  const PaymentDetails({
+    required this.invoice,
+    required this.payments,
+    this.paymentMethod,
+  });
 
   final PaymentInvoice? invoice;
   final List<PaymentRecord> payments;
+  final String? paymentMethod;
 }
 
 class PaymentRepository {
@@ -66,6 +71,19 @@ class PaymentRepository {
   final SupabaseClient _client;
 
   Future<PaymentDetails> getPaymentDetails(int orderId) async {
+    final orderJson = await _client
+        .from('DonHang')
+        .select('BookingID')
+        .eq('DonHangID', orderId)
+        .maybeSingle();
+    final bookingId = (orderJson?['BookingID'] as num?)?.toInt();
+    final bookingJson = bookingId == null
+        ? null
+        : await _client
+              .from('Booking')
+              .select('PhuongThucThanhToan')
+              .eq('BookingID', bookingId)
+              .maybeSingle();
     final invoiceJson = await _client
         .from('hoadon')
         .select('hoadonid,mahoadon,thanhtien,trangthai')
@@ -82,6 +100,7 @@ class PaymentRepository {
       payments: (paymentJson as List<dynamic>)
           .map((row) => PaymentRecord.fromJson(row as Map<String, dynamic>))
           .toList(growable: false),
+      paymentMethod: bookingJson?['PhuongThucThanhToan'] as String?,
     );
   }
 
@@ -99,4 +118,12 @@ class PaymentRepository {
       },
     );
   }
+
+  Future<void> applyPromotion({
+    required int orderId,
+    required String code,
+  }) => _client.rpc(
+    'apply_order_promotion',
+    params: {'p_donhangid': orderId, 'p_makhuyenmai': code.trim()},
+  );
 }

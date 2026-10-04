@@ -1,5 +1,26 @@
 class LaundryOrderPricing {
   static const _minorUnitsPerVnd = 100;
+  static const _vndPerPoint = 10;
+
+  static int redeemablePoints({
+    required int availablePoints,
+    required int subtotalMinorUnits,
+  }) {
+    if (availablePoints < 0 || subtotalMinorUnits < 0) {
+      throw ArgumentError('Points and subtotal cannot be negative.');
+    }
+
+    final pointsForSubtotal =
+        subtotalMinorUnits ~/ (_vndPerPoint * _minorUnitsPerVnd);
+    return availablePoints < pointsForSubtotal
+        ? availablePoints
+        : pointsForSubtotal;
+  }
+
+  static int pointsDiscountMinorUnits(int points) {
+    if (points < 0) throw ArgumentError.value(points, 'points');
+    return points * _vndPerPoint * _minorUnitsPerVnd;
+  }
 
   static int lineTotalMinorUnits({
     required num unitPriceVnd,

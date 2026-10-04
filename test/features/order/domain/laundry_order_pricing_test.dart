@@ -2,6 +2,36 @@ import 'package:app_quanly_giaiui/features/order/domain/laundry_order_pricing.da
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  group('LaundryOrderPricing.redeemablePoints', () {
+    test('limits points to the order value and available balance', () {
+      expect(
+        LaundryOrderPricing.redeemablePoints(
+          availablePoints: 141000,
+          subtotalMinorUnits: 2000000,
+        ),
+        2000,
+      );
+      expect(
+        LaundryOrderPricing.redeemablePoints(
+          availablePoints: 500,
+          subtotalMinorUnits: 2000000,
+        ),
+        500,
+      );
+      expect(
+        LaundryOrderPricing.redeemablePoints(
+          availablePoints: 500,
+          subtotalMinorUnits: 999,
+        ),
+        0,
+      );
+    });
+
+    test('converts points to minor currency units', () {
+      expect(LaundryOrderPricing.pointsDiscountMinorUnits(2000), 2000000);
+    });
+  });
+
   group('LaundryOrderPricing.lineTotalMinorUnits', () {
     test('calculates a quantity-priced line', () {
       expect(

@@ -6,6 +6,7 @@ import 'package:app_quanly_giaiui/features/order/data/order_repository.dart';
 import 'package:app_quanly_giaiui/features/order/domain/cart_item.dart';
 
 import 'package:app_quanly_giaiui/features/main_shell.dart';
+
 class OrderSummaryScreen extends StatefulWidget {
   const OrderSummaryScreen({required this.draft, super.key});
 
@@ -26,13 +27,42 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       List<CartItem>.from(widget.draft['cart'] as List<dynamic>);
   bool get _provideLaundryDetails =>
       widget.draft['provideLaundryDetails'] as bool? ?? true;
+  String get _paymentMethod =>
+      widget.draft['paymentMethod'] as String? ?? 'Tiền mặt';
   String get _pickupMethod => widget.draft['pickupMethod'] as String;
   String? get _address => widget.draft['address'] as String?;
   DateTime get _appointment => widget.draft['appointment'] as DateTime;
   String get _notes => widget.draft['notes'] as String? ?? '';
+  bool get _usePoints => widget.draft['usePoints'] as bool? ?? false;
+  int get _pointsUsedEstimate =>
+      widget.draft['pointsUsedEstimate'] as int? ?? 0;
+  num get _pointsDiscountEstimateVnd =>
+      widget.draft['pointsDiscountEstimateVnd'] as num? ?? 0;
+  String get _promotionCode => widget.draft['promotionCode'] as String? ?? '';
+  num get _promotionDiscountEstimateVnd =>
+      widget.draft['promotionDiscountEstimateVnd'] as num? ?? 0;
 
   int get _estimatedTotalMinorUnits =>
       _cart.fold(0, (total, item) => total + item.estimatedTotalMinorUnits);
+
+  num get _estimatedOrderTotalVnd =>
+      _createdBooking?.estimatedTotalVnd ?? _estimatedTotalMinorUnits / 100;
+
+  num get _totalDiscountEstimateVnd {
+    final pointsDiscount =
+        _createdBooking?.pointsDiscountVnd ??
+        (_usePoints ? _pointsDiscountEstimateVnd : 0);
+    return (_promotionDiscountEstimateVnd + pointsDiscount).clamp(
+      0,
+      _estimatedOrderTotalVnd,
+    );
+  }
+
+  num get _estimatedFinalTotalVnd =>
+      (_estimatedOrderTotalVnd - _totalDiscountEstimateVnd).clamp(
+        0,
+        _estimatedOrderTotalVnd,
+      );
 
   Future<void> _submitOrder() async {
     setState(() {
@@ -44,18 +74,23 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       final booking = _provideLaundryDetails
           ? await _repository.submitCartOrder(
               items: _cart,
+              usePoints: _usePoints,
+              paymentMethod: _paymentMethod,
               pickupMethod: _pickupMethod,
               address: _address,
               appointment: _appointment,
               notes: _notes,
               idempotencyKey: _idempotencyKey,
+              promotionCode: _promotionCode,
             )
           : await _repository.submitBookingWithoutDetails(
+              paymentMethod: _paymentMethod,
               pickupMethod: _pickupMethod,
               address: _address,
               appointment: _appointment,
               notes: _notes,
               idempotencyKey: _idempotencyKey,
+              promotionCode: _promotionCode,
             );
       if (mounted) setState(() => _createdBooking = booking);
     } catch (error) {
@@ -138,6 +173,18 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           ),
           const SizedBox(height: 20),
           _SummarySection(
+            title: 'Thanh toán',
+            children: [
+              _SummaryRow(label: 'Hình thức', value: _paymentMethod),
+              const Text(
+                'Thanh toán sẽ được thực hiện khi cửa hàng hoàn tất kiểm nhận '
+                'và hóa đơn được tạo.',
+                style: TextStyle(color: AppColors.textSecondary),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          _SummarySection(
             title: 'Nhận đồ',
             children: [
               _SummaryRow(label: 'Hình thức', value: _pickupMethod),
@@ -157,25 +204,70 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
             children: [
               if (_provideLaundryDetails)
                 _SummaryRow(
-                  label: 'Tiền dịch vụ',
-                  value: _formatVnd(_estimatedTotalMinorUnits / 100),
+                  label: booking == null
+                      ? 'Tổng tiền đơn hàng (ước tính)'
+                      : 'Tổng tiền đơn hàng theo bảng giá',
+                  value: _formatVnd(_estimatedOrderTotalVnd),
                 )
               else
                 const Text(
                   'Cửa hàng sẽ báo giá sau khi kiểm nhận đồ.',
                   style: TextStyle(color: AppColors.textSecondary),
                 ),
-              if (booking != null && _provideLaundryDetails)
-                _SummaryRow(
-                  label: 'Tạm tính theo bảng giá',
-                  value: _formatVnd(booking.estimatedTotalVnd),
-                  emphasize: true,
-                )
-              else
+              if (_provideLaundryDetails)
                 const Text(
                   'Giá cuối cùng có thể được điều chỉnh sau khi cửa hàng kiểm nhận đồ.',
                   style: TextStyle(color: AppColors.textSecondary),
+                )
+              else ...[
+                _SummaryRow(
+                  label: 'Tổng tiền đơn hàng',
+                  value: 'Cửa hàng sẽ báo giá',
                 ),
+                _SummaryRow(
+                  label: 'Tổng tiền được giảm',
+                  value: 'Tính sau khi cửa hàng báo giá',
+                ),
+                _SummaryRow(
+                  label: 'Tổng tiền cuối cùng khách trả',
+                  value: 'Cửa hàng sẽ báo giá',
+                  emphasize: true,
+                ),
+              ],
+              if (_provideLaundryDetails) ...[
+                if (_promotionCode.isNotEmpty)
+                  _SummaryRow(
+                    label: 'Giảm từ mã khuyến mãi',
+                    value: _formatVnd(_promotionDiscountEstimateVnd),
+                  ),
+                if (_usePoints) ...[
+                  _SummaryRow(
+                    label: booking == null
+                        ? 'Điểm dự kiến sử dụng'
+                        : 'Điểm đã sử dụng',
+                    value: '${booking?.pointsUsed ?? _pointsUsedEstimate} điểm',
+                  ),
+                  _SummaryRow(
+                    label: booking == null
+                        ? 'Giảm ước tính từ điểm'
+                        : 'Giảm từ điểm',
+                    value: _formatVnd(
+                      booking?.pointsDiscountVnd ?? _pointsDiscountEstimateVnd,
+                    ),
+                  ),
+                ],
+                _SummaryRow(
+                  label: 'Tổng tiền được giảm',
+                  value: _formatVnd(_totalDiscountEstimateVnd),
+                ),
+                _SummaryRow(
+                  label: 'Tổng tiền cuối cùng khách trả',
+                  value: _formatVnd(_estimatedFinalTotalVnd),
+                  emphasize: true,
+                ),
+              ],
+              if (_promotionCode.isNotEmpty)
+                _SummaryRow(label: 'Mã khuyến mãi', value: _promotionCode),
             ],
           ),
           if (_errorMessage != null) ...[
@@ -207,9 +299,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                         : const Text('Gửi yêu cầu đặt đơn'),
                   )
                 : FilledButton(
-    onPressed: () => MainShell.goToTab(context, 1),
-    child: const Text('Đến lịch sử đơn hàng'),
-  ),
+                    onPressed: () => MainShell.goToTab(context, 1),
+                    child: const Text('Đến lịch sử đơn hàng'),
+                  ),
           ),
         ),
       ),

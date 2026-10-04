@@ -40,6 +40,7 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   final _authRepository = AuthRepository();
+  final _homeScreenKey = GlobalKey<HomeScreenState>();
   final _unreadNotificationCount = ValueNotifier<int>(0);
   late Future<List<String>> _rolesFuture;
   late int _selectedIndex;
@@ -80,6 +81,11 @@ class _MainShellState extends State<MainShell> {
 
   void _onDestinationSelected(int index, bool isStaff) {
     setState(() => _selectedIndex = index);
+    if (index == 0) {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _homeScreenKey.currentState?.refresh(),
+      );
+    }
 
     // Notify HistoryScreen about visibility change
     if (!isStaff) {
@@ -110,6 +116,7 @@ class _MainShellState extends State<MainShell> {
               ]
             : [
                 HomeScreen(
+                  key: _homeScreenKey,
                   unreadNotificationCount: _unreadNotificationCount,
                   onOpenNotifications: () => _onDestinationSelected(2, false),
                 ),
