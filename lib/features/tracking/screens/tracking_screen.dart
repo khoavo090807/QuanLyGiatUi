@@ -6,12 +6,11 @@ import 'package:app_quanly_giaiui/core/theme/app_typography.dart';
 import 'package:app_quanly_giaiui/features/order/data/order_repository.dart';
 
 class TrackingScreen extends StatefulWidget {
-  const TrackingScreen({
-    this.orderId,
-    this.bookingId,
-    super.key,
-  }) : assert(orderId != null || bookingId != null,
-      'Either orderId or bookingId must be provided');
+  const TrackingScreen({this.orderId, this.bookingId, super.key})
+    : assert(
+        orderId != null || bookingId != null,
+        'Either orderId or bookingId must be provided',
+      );
 
   final String? orderId;
   final String? bookingId;
@@ -59,7 +58,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
       appBar: AppBar(
         title: Text(
           widget.orderId != null
-              ? 'Theo dõi đơn #${widget.orderId}'
+              ? 'Chi tiết đơn hàng #${widget.orderId}'
               : 'Chi tiết yêu cầu #${widget.bookingId}',
         ),
       ),
@@ -187,7 +186,22 @@ class _TrackingScreenState extends State<TrackingScreen> {
                   ),
                   const SizedBox(height: 20),
                 ],
-                // Thông tin nhận đồ
+                _SummarySection(
+                  title: 'Thanh toán',
+                  children: [
+                    _SummaryRow(
+                      label: 'Hình thức',
+                      value: details.paymentMethod ?? 'Chưa ghi nhận',
+                    ),
+                    Text(
+                      details.paymentMethod == null
+                          ? 'Chưa có giao dịch thanh toán được ghi nhận.'
+                          : 'Thanh toán sẽ được thực hiện khi cửa hàng hoàn tất kiểm nhận và hóa đơn được tạo.',
+                      style: const TextStyle(color: AppColors.textSecondary),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
                 if (details.pickupMethod != null) ...[
                   _SummarySection(
                     title: 'Nhận đồ',
@@ -196,7 +210,8 @@ class _TrackingScreenState extends State<TrackingScreen> {
                         label: 'Hình thức',
                         value: details.pickupMethod!,
                       ),
-                      if (details.address != null && details.address!.isNotEmpty)
+                      if (details.address != null &&
+                          details.address!.isNotEmpty)
                         _SummaryRow(label: 'Địa chỉ', value: details.address!),
                       if (details.appointment != null)
                         _SummaryRow(
@@ -209,30 +224,86 @@ class _TrackingScreenState extends State<TrackingScreen> {
                   ),
                   const SizedBox(height: 20),
                 ],
-                // Tổng tiền
                 _SummarySection(
                   title: order.hasLaundryDetails ? 'Tạm tính' : 'Báo giá',
                   children: [
-                    if (order.hasLaundryDetails && order.totalVnd > 0)
+                    if (order.hasLaundryDetails && details.subtotalVnd != null)
                       _SummaryRow(
-                        label: 'Tạm tính theo bảng giá',
-                        value: _formatVnd(order.totalVnd),
-                        emphasize: true,
+                        label: 'Tổng tiền đơn hàng theo bảng giá',
+                        value: _formatVnd(details.subtotalVnd!),
                       )
                     else if (!order.hasLaundryDetails)
                       const Text(
                         'Cửa hàng sẽ báo giá sau khi kiểm nhận đồ.',
                         style: TextStyle(color: AppColors.textSecondary),
                       ),
-                    const SizedBox(height: 8),
+                    if (details.deliveryFeeVnd > 0)
+                      _SummaryRow(
+                        label: 'Phí giao nhận',
+                        value: _formatVnd(details.deliveryFeeVnd),
+                      ),
+                    if (details.promotionDiscountVnd case final discount?
+                        when discount > 0)
+                      _SummaryRow(
+                        label: 'Giảm từ mã khuyến mãi',
+                        value: '-${_formatVnd(discount)}',
+                      ),
+                    if (details.pointsUsed > 0)
+                      _SummaryRow(
+                        label: 'Điểm đã sử dụng',
+                        value: '${details.pointsUsed} điểm',
+                      ),
+                    if (details.pointsDiscountVnd > 0)
+                      _SummaryRow(
+                        label: 'Giảm từ điểm',
+                        value: '-${_formatVnd(details.pointsDiscountVnd)}',
+                      ),
+                    if (details.promotionApplied)
+                      _SummaryRow(
+                        label: 'Mã khuyến mãi',
+                        value: details.promotionCode ?? 'Đã áp dụng',
+                      ),
+                    if (details.promotionDiscountVnd != null ||
+                        (details.pointsDiscountVnd > 0 &&
+                            !details.promotionApplied))
+                      _SummaryRow(
+                        label: 'Tổng tiền được giảm',
+                        value:
+                            '-${_formatVnd(details.pointsDiscountVnd + (details.promotionDiscountVnd ?? 0))}',
+                      ),
+                    if (details.finalTotalVnd != null)
+                      _SummaryRow(
+                        label: 'Tổng tiền cuối cùng khách trả',
+                        value: _formatVnd(details.finalTotalVnd!),
+                        emphasize: true,
+                      )
+                    else if (order.hasLaundryDetails)
+                      const _SummaryRow(
+                        label: 'Tổng tiền cuối cùng khách trả',
+                        value: 'Chờ cửa hàng xác nhận',
+                        emphasize: true,
+                      ),
                     const Text(
                       'Giá cuối cùng có thể được điều chỉnh sau khi cửa hàng kiểm nhận đồ.',
-                      style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                      style: TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 13,
+                      ),
                     ),
+                    if (details.promotionApplied &&
+                        details.promotionDiscountVnd == null)
+                      const Text(
+                        'Mức giảm của mã khuyến mãi sẽ được xác nhận khi cửa hàng tiếp nhận yêu cầu.',
+                        style: TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 13,
+                        ),
+                      ),
                   ],
                 ),
                 if (widget.orderId != null &&
-                    (order.status == 'Đã giao' || order.status == 'Đã thanh toán')) ...[
+                    (order.status == 'Đã giao' ||
+                        order.status == 'Đã thanh toán')) ...[
                   const SizedBox(height: 24),
                   FilledButton.icon(
                     onPressed: () => context.pushNamed(
@@ -350,13 +421,15 @@ class _SummaryRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
+            flex: 2,
             child: Text(
               label,
+              softWrap: true,
               style: TextStyle(
                 color: AppColors.textSecondary,
                 fontWeight: emphasize ? FontWeight.w600 : null,
@@ -364,13 +437,18 @@ class _SummaryRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          Flexible(
-            child: Text(
-              value,
-              textAlign: TextAlign.end,
-              style: TextStyle(
-                color: emphasize ? AppColors.primary : AppColors.textPrimary,
-                fontWeight: emphasize ? FontWeight.bold : null,
+          Expanded(
+            flex: 3,
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                value,
+                textAlign: TextAlign.end,
+                softWrap: true,
+                style: TextStyle(
+                  color: emphasize ? AppColors.primary : AppColors.textPrimary,
+                  fontWeight: emphasize ? FontWeight.bold : null,
+                ),
               ),
             ),
           ),

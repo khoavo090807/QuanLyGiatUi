@@ -1,6 +1,6 @@
 class LaundryOrderPricing {
   static const _minorUnitsPerVnd = 100;
-  static const _vndPerPoint = 10;
+  static const _vndPerPoint = 1;
 
   static int redeemablePoints({
     required int availablePoints,

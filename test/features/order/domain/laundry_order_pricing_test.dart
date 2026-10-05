@@ -3,13 +3,13 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('LaundryOrderPricing.redeemablePoints', () {
-    test('limits points to the order value and available balance', () {
+    test('limits points at one VND per point and available balance', () {
       expect(
         LaundryOrderPricing.redeemablePoints(
           availablePoints: 141000,
           subtotalMinorUnits: 2000000,
         ),
-        2000,
+        20000,
       );
       expect(
         LaundryOrderPricing.redeemablePoints(
@@ -23,12 +23,12 @@ void main() {
           availablePoints: 500,
           subtotalMinorUnits: 999,
         ),
-        0,
+        9,
       );
     });
 
     test('converts points to minor currency units', () {
-      expect(LaundryOrderPricing.pointsDiscountMinorUnits(2000), 2000000);
+      expect(LaundryOrderPricing.pointsDiscountMinorUnits(2000), 200000);
     });
   });
 

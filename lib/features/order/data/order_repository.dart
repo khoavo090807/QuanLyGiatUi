@@ -233,19 +233,37 @@ class LaundryOrderDetails {
     required this.order,
     required this.events,
     this.pickupMethod,
+    this.paymentMethod,
     this.address,
     this.appointment,
     this.notes,
     this.items,
+    this.subtotalVnd,
+    this.deliveryFeeVnd = 0,
+    this.pointsUsed = 0,
+    this.pointsDiscountVnd = 0,
+    this.promotionDiscountVnd,
+    this.promotionApplied = false,
+    this.promotionCode,
+    this.finalTotalVnd,
   });
 
   final LaundryOrderRecord order;
   final List<LaundryOrderStatusEvent> events;
   final String? pickupMethod;
+  final String? paymentMethod;
   final String? address;
   final DateTime? appointment;
   final String? notes;
   final List<LaundryOrderItem>? items;
+  final num? subtotalVnd;
+  final num deliveryFeeVnd;
+  final int pointsUsed;
+  final num pointsDiscountVnd;
+  final num? promotionDiscountVnd;
+  final bool promotionApplied;
+  final String? promotionCode;
+  final num? finalTotalVnd;
 }
 
 class LaundryOrderItem {
@@ -499,7 +517,9 @@ class OrderRepository {
     final order = await _client
         .from('DonHang')
         .select(
-          'DonHangID,BookingID,MaDonHang,TrangThai,ThanhTien,NgayTao,'
+          'DonHangID,BookingID,MaDonHang,TrangThai,TongTien,DiemSuDung,'
+          'TienGiamDoDiem,KhuyenMaiID,TienGiamKhuyenMai,PhiGiaoHang,'
+          'ThanhTien,NgayTao,KhuyenMai(MaKhuyenMai),'
           'ChiTietDonHang('
           'SoLuong,KhoiLuong,DonGia,ThanhTien,'
           'DichVu(TenDichVu),'
@@ -597,10 +617,21 @@ class OrderRepository {
           )
           .toList(growable: false),
       pickupMethod: pickupMethod,
+      paymentMethod: await _getPaymentMethod(orderId),
       address: address,
       appointment: appointment,
       notes: notes,
       items: items.isNotEmpty ? items : null,
+      subtotalVnd: order['TongTien'] as num?,
+      deliveryFeeVnd: order['PhiGiaoHang'] as num? ?? 0,
+      pointsUsed: (order['DiemSuDung'] as num?)?.toInt() ?? 0,
+      pointsDiscountVnd: order['TienGiamDoDiem'] as num? ?? 0,
+      promotionDiscountVnd: order['TienGiamKhuyenMai'] as num? ?? 0,
+      promotionApplied: order['KhuyenMaiID'] != null,
+      promotionCode:
+          (order['KhuyenMai'] as Map<String, dynamic>?)?['MaKhuyenMai']
+              as String?,
+      finalTotalVnd: order['ThanhTien'] as num?,
     );
   }
 
@@ -609,6 +640,7 @@ class OrderRepository {
         .from('Booking')
         .select(
           'BookingID,MaBooking,TrangThai,NgayTao,HinhThucNhanDo,DiaChiNhan,NgayHen,GioHen,GhiChu,'
+          'DiemSuDung,TienGiamDoDiem,KhuyenMaiID,KhuyenMai(MaKhuyenMai),'
           'ChiTietBooking('
           'SoLuong,KhoiLuong,DonGia,ThanhTien,'
           'DichVu(TenDichVu),'
@@ -623,7 +655,10 @@ class OrderRepository {
 
     final linkedOrder = await _client
         .from('DonHang')
-        .select('DonHangID,TrangThai')
+        .select(
+          'DonHangID,TrangThai,TongTien,DiemSuDung,TienGiamDoDiem,KhuyenMaiID,'
+          'TienGiamKhuyenMai,PhiGiaoHang,ThanhTien,KhuyenMai(MaKhuyenMai)',
+        )
         .eq('BookingID', bookingId)
         .maybeSingle();
     final record = LaundryOrderRecord.fromBookingJson(
@@ -688,11 +723,52 @@ class OrderRepository {
           )
           .toList(growable: false),
       pickupMethod: booking['HinhThucNhanDo'] as String?,
+      paymentMethod: linkedOrderId == null
+          ? null
+          : await _getPaymentMethod(linkedOrderId),
       address: booking['DiaChiNhan'] as String?,
       appointment: appointment,
       notes: booking['GhiChu'] as String?,
       items: items.isNotEmpty ? items : null,
+      subtotalVnd:
+          linkedOrder?['TongTien'] as num? ??
+          details.fold<num>(
+            0,
+            (total, item) =>
+                total +
+                ((item as Map<String, dynamic>)['ThanhTien'] as num? ?? 0),
+          ),
+      deliveryFeeVnd: linkedOrder?['PhiGiaoHang'] as num? ?? 0,
+      pointsUsed:
+          (linkedOrder?['DiemSuDung'] as num?)?.toInt() ??
+          (booking['DiemSuDung'] as num?)?.toInt() ??
+          0,
+      pointsDiscountVnd:
+          linkedOrder?['TienGiamDoDiem'] as num? ??
+          booking['TienGiamDoDiem'] as num? ??
+          0,
+      promotionDiscountVnd: linkedOrder?['TienGiamKhuyenMai'] as num?,
+      promotionApplied:
+          linkedOrder?['KhuyenMaiID'] != null || booking['KhuyenMaiID'] != null,
+      promotionCode:
+          ((linkedOrder?['KhuyenMai'] as Map<String, dynamic>?) ??
+                  (booking['KhuyenMai']
+                      as Map<String, dynamic>?))?['MaKhuyenMai']
+              as String?,
+      finalTotalVnd: linkedOrder?['ThanhTien'] as num?,
     );
+  }
+
+  Future<String?> _getPaymentMethod(int orderId) async {
+    final rows = await _client
+        .from('ThanhToan')
+        .select('PhuongThuc')
+        .eq('DonHangID', orderId)
+        .order('ThoiGian', ascending: false)
+        .limit(1);
+    final payments = rows as List<dynamic>;
+    if (payments.isEmpty) return null;
+    return (payments.first as Map<String, dynamic>)['PhuongThuc'] as String?;
   }
 
   Future<CreatedLaundryBooking> submitOrder({
