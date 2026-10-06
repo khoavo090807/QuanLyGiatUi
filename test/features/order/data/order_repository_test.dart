@@ -47,6 +47,8 @@ void main() {
         'MaBooking': 'BK-20261003120333-e717c494',
         'TrangThai': 'ChoTiepNhan',
         'NgayTao': '2026-10-03T12:03:33',
+        'HinhThucNhanDo': 'Tại nhà',
+        'HinhThucGiaoDo': 'Tại cửa hàng',
         'ChiTietBooking': <dynamic>[],
       },
       linkedOrder: {'DonHangID': 33, 'TrangThai': 'Đã giao'},
@@ -55,6 +57,27 @@ void main() {
     expect(order.bookingId, 99);
     expect(order.orderId, 33);
     expect(order.status, 'Đã giao');
+    expect(order.pickupMethod, 'Tại nhà');
+    expect(order.deliveryMethod, 'Tại cửa hàng');
+  });
+
+  test('parses delivery method from linked booking on an order', () {
+    final order = LaundryOrderRecord.fromJson({
+      'DonHangID': 33,
+      'BookingID': 99,
+      'MaDonHang': 'DH-33',
+      'TrangThai': 'Đã nhận',
+      'ThanhTien': 25000,
+      'NgayTao': '2026-10-03T12:03:33',
+      'Booking': {
+        'HinhThucNhanDo': 'Tại nhà',
+        'HinhThucGiaoDo': 'Tại nhà',
+      },
+      'ChiTietDonHang': <dynamic>[],
+    });
+
+    expect(order.pickupMethod, 'Tại nhà');
+    expect(order.deliveryMethod, 'Tại nhà');
   });
 
   test('parses status-history RPC rows without changing event fields', () {

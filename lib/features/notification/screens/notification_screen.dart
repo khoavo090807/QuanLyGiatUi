@@ -84,46 +84,6 @@ class _NotificationScreenState extends State<NotificationScreen> {
     }
   }
 
-  Future<void> _deleteSelected() async {
-    if (_selectedNotificationIds.isEmpty) return;
-    final count = _selectedNotificationIds.length;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Xóa thông báo đã chọn?'),
-        content: Text(
-          'Bạn sắp xóa $count thông báo. Thao tác này không thể hoàn tác.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Hủy'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Xóa'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-
-    setState(() => _isBusy = true);
-    try {
-      await _repository.deleteMany(_selectedNotificationIds);
-      _selectedNotificationIds.clear();
-      await _refresh();
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Không thể xóa thông báo đã chọn.')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isBusy = false);
-    }
-  }
-
   void _toggleSelection(int notificationId, bool? selected) {
     setState(() {
       if (selected ?? false) {
@@ -217,13 +177,6 @@ class _NotificationScreenState extends State<NotificationScreen> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.done_all),
-          ),
-          IconButton(
-            tooltip: 'Xóa thông báo đã chọn',
-            onPressed: _isBusy || _selectedNotificationIds.isEmpty
-                ? null
-                : _deleteSelected,
-            icon: const Icon(Icons.delete_outline),
           ),
         ],
       ),

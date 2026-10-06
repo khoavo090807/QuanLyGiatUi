@@ -156,6 +156,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
             },
           ),
           _MenuItem(
+            icon: Icons.lock_reset_outlined,
+            title: 'Đổi mật khẩu',
+            onTap: () => context.pushNamed(AppRoutes.changePassword),
+          ),
+          _MenuItem(
             icon: Icons.location_on_outlined,
             title: AppStrings.addresses,
               onTap: () => context.pushNamed(AppRoutes.addressBook),

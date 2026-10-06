@@ -6,6 +6,7 @@ import 'package:app_quanly_giaiui/core/constants/app_strings.dart';
 import 'package:app_quanly_giaiui/core/navigation/app_routes.dart';
 import 'package:app_quanly_giaiui/core/theme/app_colors.dart';
 import 'package:app_quanly_giaiui/core/theme/app_typography.dart';
+import 'package:app_quanly_giaiui/core/utils/formatter_utils.dart';
 import 'package:app_quanly_giaiui/core/widgets/status_badge.dart';
 import 'package:app_quanly_giaiui/features/order/data/order_repository.dart';
 
@@ -218,14 +219,6 @@ class _HistoryScreenState extends State<HistoryScreen>
                               );
                             }
                           },
-                          onRequestPayment: filtered[index].orderId == null
-                              ? null
-                              : () => context.pushNamed(
-                                  AppRoutes.payment,
-                                  pathParameters: {
-                                    'id': filtered[index].orderId.toString(),
-                                  },
-                                ),
                           onCancelBooking: _isCancelling
                               ? null
                               : () => _cancelBooking(filtered[index]),
@@ -244,29 +237,41 @@ class _OrderCard extends StatelessWidget {
   const _OrderCard({
     required this.order,
     required this.onViewDetails,
-    required this.onRequestPayment,
     required this.onCancelBooking,
   });
 
   final LaundryOrderRecord order;
   final VoidCallback onViewDetails;
-  final VoidCallback? onRequestPayment;
   final VoidCallback? onCancelBooking;
 
   @override
   Widget build(BuildContext context) {
-    final created = order.createdAt.toLocal();
+    final status = order.status;
+    final statusBadge = switch (status) {
+      'Đã hủy' => StatusBadge(
+          text: status,
+          backgroundColor: AppColors.errorLight,
+          textColor: AppColors.error,
+        ),
+      'Đã giao' || 'Đã thanh toán' || 'Hoàn thành' =>
+        StatusBadge.completed(text: status),
+      'Chờ tiếp nhận' || 'Chờ xác nhận' || 'Đã tiếp nhận' || 'Đang giặt' || 'Chờ trả đồ' =>
+        StatusBadge.active(text: status),
+      _ => StatusBadge.pending(text: status),
+    };
+
     return Material(
       color: AppColors.surface,
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(10),
       child: InkWell(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(10),
         onTap: onViewDetails,
         child: Container(
+          width: double.infinity,
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             border: Border.all(color: AppColors.divider),
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(10),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -282,30 +287,30 @@ class _OrderCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  _StatusPill(status: order.status),
-                  if (order.status == 'Đã giao' && order.orderId != null)
-                    IconButton(
-                      tooltip: 'Thanh toán hóa đơn',
-                      onPressed: onRequestPayment,
-                      icon: const Icon(Icons.payments_outlined),
-                    ),
+                  Flexible(child: statusBadge),
                 ],
               ),
               const SizedBox(height: 8),
-              Text(order.lineDescription, style: AppTypography.bodyText),
+              Text(
+                order.lineDescription,
+                style: AppTypography.bodyText,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
               const SizedBox(height: 12),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    '${created.day.toString().padLeft(2, '0')}/'
-                    '${created.month.toString().padLeft(2, '0')}/${created.year}',
+                    FormatterUtils.formatDate(order.createdAt),
                     style: AppTypography.bodySmall.copyWith(
-                      color: AppColors.textSecondary,
+                      color: AppColors.textMuted,
                     ),
                   ),
                   Text(
-                    '${order.totalVnd.toStringAsFixed(0)} đ',
+                    FormatterUtils.formatCurrency(
+                      (order.finalTotalVnd ?? order.totalVnd).toDouble(),
+                    ),
                     style: AppTypography.title.copyWith(
                       color: AppColors.primary,
                     ),
@@ -325,27 +330,6 @@ class _OrderCard extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-class _StatusPill extends StatelessWidget {
-  const _StatusPill({required this.status});
-
-  final String status;
-
-  @override
-  Widget build(BuildContext context) {
-    if (status == 'Đã hủy') {
-      return StatusBadge(
-        text: status,
-        backgroundColor: AppColors.errorLight,
-        textColor: AppColors.error,
-      );
-    }
-    if (const {'Đã giao', 'Đã thanh toán', 'Hoàn thành'}.contains(status)) {
-      return StatusBadge.completed(text: status);
-    }
-    return StatusBadge.active(text: status);
   }
 }
 

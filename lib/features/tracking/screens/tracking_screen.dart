@@ -52,6 +52,9 @@ class _TrackingScreenState extends State<TrackingScreen> {
 
   String _formatVnd(num value) => '${value.toStringAsFixed(0)} đ';
 
+  String _formatDistance(num meters) =>
+      '${(meters / 1000).toStringAsFixed(1)} km';
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -204,15 +207,29 @@ class _TrackingScreenState extends State<TrackingScreen> {
                 const SizedBox(height: 20),
                 if (details.pickupMethod != null) ...[
                   _SummarySection(
-                    title: 'Nhận đồ',
+                    title: 'Thông tin nhận và giao đồ',
                     children: [
                       _SummaryRow(
-                        label: 'Hình thức',
+                        label: 'Hình thức nhân viên nhận đồ',
                         value: details.pickupMethod!,
                       ),
+                      if (details.deliveryMethod != null)
+                        _SummaryRow(
+                          label: 'Hình thức nhân viên giao đồ',
+                          value: details.deliveryMethod!,
+                        ),
                       if (details.address != null &&
                           details.address!.isNotEmpty)
-                        _SummaryRow(label: 'Địa chỉ', value: details.address!),
+                        _SummaryRow(
+                          label: 'Địa chỉ lấy đồ',
+                          value: details.address!,
+                        ),
+                      if (details.deliveryAddress != null &&
+                          details.deliveryAddress!.isNotEmpty)
+                        _SummaryRow(
+                          label: 'Địa chỉ giao đồ',
+                          value: details.deliveryAddress!,
+                        ),
                       if (details.appointment != null)
                         _SummaryRow(
                           label: 'Lịch hẹn',
@@ -237,7 +254,18 @@ class _TrackingScreenState extends State<TrackingScreen> {
                         'Cửa hàng sẽ báo giá sau khi kiểm nhận đồ.',
                         style: TextStyle(color: AppColors.textSecondary),
                       ),
-                    if (details.deliveryFeeVnd > 0)
+                    if (order.pickupMethod == 'Tại nhà')
+                      _SummaryRow(
+                        label: 'Phí lấy đồ · ${_formatDistance(order.pickupDistanceMeters)}',
+                        value: _formatVnd(order.pickupDeliveryFeeVnd),
+                      ),
+                    if (order.deliveryMethod == 'Tại nhà')
+                      _SummaryRow(
+                        label: 'Phí giao đồ · ${_formatDistance(order.deliveryDistanceMeters)}',
+                        value: _formatVnd(order.deliveryLegFeeVnd),
+                      ),
+                    if (details.deliveryFeeVnd > 0 &&
+                        order.pickupDeliveryFeeVnd + order.deliveryLegFeeVnd == 0)
                       _SummaryRow(
                         label: 'Phí giao nhận',
                         value: _formatVnd(details.deliveryFeeVnd),
@@ -271,18 +299,11 @@ class _TrackingScreenState extends State<TrackingScreen> {
                         value:
                             '-${_formatVnd(details.pointsDiscountVnd + (details.promotionDiscountVnd ?? 0))}',
                       ),
-                    if (details.finalTotalVnd != null)
-                      _SummaryRow(
-                        label: 'Tổng tiền cuối cùng khách trả',
-                        value: _formatVnd(details.finalTotalVnd!),
-                        emphasize: true,
-                      )
-                    else if (order.hasLaundryDetails)
-                      const _SummaryRow(
-                        label: 'Tổng tiền cuối cùng khách trả',
-                        value: 'Chờ cửa hàng xác nhận',
-                        emphasize: true,
-                      ),
+                    _SummaryRow(
+                      label: 'Tổng tiền cuối cùng khách trả',
+                      value: _formatVnd(details.finalTotalVnd ?? 0),
+                      emphasize: true,
+                    ),
                     const Text(
                       'Giá cuối cùng có thể được điều chỉnh sau khi cửa hàng kiểm nhận đồ.',
                       style: TextStyle(

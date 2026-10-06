@@ -4,6 +4,7 @@ import 'package:app_quanly_giaiui/core/theme/app_colors.dart';
 import 'package:app_quanly_giaiui/core/theme/app_typography.dart';
 import 'package:app_quanly_giaiui/features/order/data/order_repository.dart';
 import 'package:app_quanly_giaiui/features/order/domain/cart_item.dart';
+import 'package:app_quanly_giaiui/features/order/domain/cart_store.dart';
 
 import 'package:app_quanly_giaiui/features/main_shell.dart';
 
@@ -27,10 +28,15 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       List<CartItem>.from(widget.draft['cart'] as List<dynamic>);
   bool get _provideLaundryDetails =>
       widget.draft['provideLaundryDetails'] as bool? ?? true;
+  bool get _clearCartAfterSubmit =>
+      widget.draft['clearCartAfterSubmit'] as bool? ?? false;
   String get _paymentMethod =>
       widget.draft['paymentMethod'] as String? ?? 'Tiền mặt';
   String get _pickupMethod => widget.draft['pickupMethod'] as String;
+  String get _deliveryMethod => widget.draft['deliveryMethod'] as String;
   String? get _address => widget.draft['address'] as String?;
+  String? get _deliveryAddress => widget.draft['deliveryAddress'] as String?;
+  String? get _deliveryQuoteId => widget.draft['deliveryQuoteId'] as String?;
   DateTime get _appointment => widget.draft['appointment'] as DateTime;
   String get _notes => widget.draft['notes'] as String? ?? '';
   bool get _usePoints => widget.draft['usePoints'] as bool? ?? false;
@@ -44,6 +50,20 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
   int get _estimatedTotalMinorUnits =>
       _cart.fold(0, (total, item) => total + item.estimatedTotalMinorUnits);
+
+  num get _pickupDistanceMeters =>
+      _createdBooking?.pickupDistanceMeters ??
+      (widget.draft['pickupDistanceMeters'] as num? ?? 0).toInt();
+  num get _pickupDeliveryFeeVnd =>
+      _createdBooking?.pickupDeliveryFeeVnd ??
+      widget.draft['pickupDeliveryFeeVnd'] as num? ?? 0;
+  num get _deliveryDistanceMeters =>
+      _createdBooking?.deliveryDistanceMeters ??
+      (widget.draft['deliveryDistanceMeters'] as num? ?? 0).toInt();
+  num get _deliveryFeeVnd =>
+      _createdBooking?.deliveryFeeVnd ??
+      widget.draft['deliveryFeeVnd'] as num? ?? 0;
+  num get _totalDeliveryFeeVnd => _pickupDeliveryFeeVnd + _deliveryFeeVnd;
 
   num get _estimatedOrderTotalVnd =>
       _createdBooking?.estimatedTotalVnd ?? _estimatedTotalMinorUnits / 100;
@@ -62,7 +82,11 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       (_estimatedOrderTotalVnd - _totalDiscountEstimateVnd).clamp(
         0,
         _estimatedOrderTotalVnd,
-      );
+      ) +
+      _totalDeliveryFeeVnd;
+
+  String _distanceLabel(num meters) =>
+      '${(meters / 1000).toStringAsFixed(1)} km';
 
   Future<void> _submitOrder() async {
     setState(() {
@@ -77,7 +101,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
               usePoints: _usePoints,
               paymentMethod: _paymentMethod,
               pickupMethod: _pickupMethod,
+              deliveryMethod: _deliveryMethod,
               address: _address,
+              deliveryAddress: _deliveryAddress,
+              deliveryFeeQuoteId: _deliveryQuoteId,
               appointment: _appointment,
               notes: _notes,
               idempotencyKey: _idempotencyKey,
@@ -86,12 +113,16 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           : await _repository.submitBookingWithoutDetails(
               paymentMethod: _paymentMethod,
               pickupMethod: _pickupMethod,
+              deliveryMethod: _deliveryMethod,
               address: _address,
+              deliveryAddress: _deliveryAddress,
+              deliveryFeeQuoteId: _deliveryQuoteId,
               appointment: _appointment,
               notes: _notes,
               idempotencyKey: _idempotencyKey,
               promotionCode: _promotionCode,
             );
+      if (_clearCartAfterSubmit) CartStore.instance.clear();
       if (mounted) setState(() => _createdBooking = booking);
     } catch (error) {
       if (mounted) setState(() => _errorMessage = _messageFor(error));
@@ -185,11 +216,38 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           ),
           const SizedBox(height: 20),
           _SummarySection(
-            title: 'Nhận đồ',
+            title: 'Thông tin nhận và giao đồ',
             children: [
-              _SummaryRow(label: 'Hình thức', value: _pickupMethod),
+              _SummaryRow(
+                label: 'Hình thức nhân viên nhận đồ',
+                value: _pickupMethod,
+              ),
+              _SummaryRow(
+                label: 'Hình thức nhân viên giao đồ',
+                value: _deliveryMethod,
+              ),
               if (_address != null)
-                _SummaryRow(label: 'Địa chỉ', value: _address!),
+                _SummaryRow(label: 'Địa chỉ lấy đồ', value: _address!),
+              if (_deliveryAddress != null)
+                _SummaryRow(
+                  label: 'Địa chỉ giao đồ',
+                  value: _deliveryAddress!,
+                ),
+              if (_pickupMethod == 'Tại nhà')
+                _SummaryRow(
+                  label: 'Phí lấy đồ · ${_distanceLabel(_pickupDistanceMeters)}',
+                  value: _formatVnd(_pickupDeliveryFeeVnd),
+                ),
+              if (_deliveryMethod == 'Tại nhà')
+                _SummaryRow(
+                  label: 'Phí giao đồ · ${_distanceLabel(_deliveryDistanceMeters)}',
+                  value: _formatVnd(_deliveryFeeVnd),
+                ),
+              if (_totalDeliveryFeeVnd > 0)
+                _SummaryRow(
+                  label: 'Tổng phí giao nhận',
+                  value: _formatVnd(_totalDeliveryFeeVnd),
+                ),
               _SummaryRow(
                 label: 'Lịch hẹn',
                 value: _formatDateTime(_appointment),

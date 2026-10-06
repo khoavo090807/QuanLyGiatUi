@@ -4,6 +4,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:app_quanly_giaiui/core/config/supabase_config.dart';
 
 class AuthRepository {
+  static const passwordSetupCompleteMetadataKey =
+      'password_setup_completed';
+  static const authCallbackRedirectTo =
+      'io.supabase.appquanlygiaui://login-callback';
   static const passwordRecoveryRedirectTo =
       'io.supabase.appquanlygiaui://login-callback/reset-password';
 
@@ -125,6 +129,7 @@ class AuthRepository {
       email: email.trim(),
       password: password,
       data: {'full_name': fullName.trim()},
+      emailRedirectTo: kIsWeb ? Uri.base.origin : authCallbackRedirectTo,
     );
     if (response.session != null) await ensureCustomerProfile();
   }
@@ -151,7 +156,84 @@ class AuthRepository {
         'Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.',
       );
     }
-    await _client.auth.updateUser(UserAttributes(password: password));
+    final user = _client.auth.currentUser;
+    final isGoogleUser =
+        user?.appMetadata['provider'] == 'google' ||
+        (user?.identities ?? const []).any(
+          (identity) => identity.provider == 'google',
+        );
+    final metadata = Map<String, dynamic>.from(user?.userMetadata ?? {});
+    if (isGoogleUser) {
+      metadata[passwordSetupCompleteMetadataKey] = true;
+    }
+    await _client.auth.updateUser(
+      UserAttributes(
+        password: password,
+        data: isGoogleUser ? metadata : null,
+      ),
+    );
+  }
+
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final user = _client.auth.currentUser;
+    final email = user?.email;
+    if (user == null || email == null || email.isEmpty) {
+      throw const AuthException(
+        'Tài khoản này không có email và mật khẩu để xác minh.',
+      );
+    }
+
+    // Re-authenticate with the old password first. This guarantees that the
+    // old password is checked even when the Auth server does not enforce the
+    // optional current_password update setting.
+    await _client.auth.signInWithPassword(
+      email: email,
+      password: currentPassword,
+    );
+    await _client.auth.updateUser(
+      UserAttributes(
+        password: newPassword,
+        currentPassword: currentPassword,
+      ),
+    );
+  }
+
+  bool get requiresInitialGooglePassword {
+    final user = _client.auth.currentUser;
+    if (user == null) return false;
+
+    final usesGoogle =
+        user.appMetadata['provider'] == 'google' ||
+        (user.identities ?? const []).any(
+          (identity) => identity.provider == 'google',
+        );
+    if (!usesGoogle ||
+        user.userMetadata?[passwordSetupCompleteMetadataKey] == true) {
+      return false;
+    }
+
+    // Supabase adds an email identity when a first password is set. This also
+    // avoids prompting existing Google users who already have a password.
+    final alreadyHasEmailIdentity = (user.identities ?? const []).any(
+      (identity) => identity.provider == 'email',
+    );
+    return !alreadyHasEmailIdentity;
+  }
+
+  Future<void> setInitialGooglePassword(String password) async {
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      throw const AuthException('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+    }
+
+    final metadata = Map<String, dynamic>.from(user.userMetadata ?? {});
+    metadata[passwordSetupCompleteMetadataKey] = true;
+    await _client.auth.updateUser(
+      UserAttributes(password: password, data: metadata),
+    );
   }
 
   Future<void> ensureGoogleCustomerProfile() async {

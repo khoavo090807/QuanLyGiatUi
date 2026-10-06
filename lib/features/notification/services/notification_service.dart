@@ -18,6 +18,7 @@ class NotificationService {
   StreamSubscription<AuthState>? _authSubscription;
   int? _subscribedTaiKhoanId;
   bool _isInitialized = false;
+  final Set<int> _deliveredNotificationIds = <int>{};
 
   Stream<LaundryNotification> get onNewNotification =>
       _newNotificationController.stream;
@@ -81,6 +82,7 @@ class NotificationService {
             final notification = LaundryNotification.fromJson(
             payload.newRecord,
             );
+            if (!_deliveredNotificationIds.add(notification.id)) return;
             _newNotificationController.add(notification);
           },
         )
@@ -100,6 +102,7 @@ class NotificationService {
     await _channel?.unsubscribe();
     _channel = null;
     _subscribedTaiKhoanId = null;
+    _deliveredNotificationIds.clear();
   }
 
   Future<bool> isNotificationEnabled() async {

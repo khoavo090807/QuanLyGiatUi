@@ -81,7 +81,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               const SizedBox(height: 12),
               Text(
                 _emailSent
-                    ? 'Nếu email thuộc tài khoản hợp lệ, hướng dẫn đặt lại mật khẩu sẽ được gửi đến hộp thư.'
+                    ? 'Nếu email thuộc tài khoản hợp lệ, hướng dẫn đặt lại mật khẩu sẽ được gửi đến hộp thư trong email, có thể tin nhắn nằm trong thư rác.'
                     : 'Nhập email tài khoản nhân viên để nhận liên kết đặt lại mật khẩu.',
                 style: AppTypography.bodyText.copyWith(color: AppColors.textSecondary),
                 textAlign: TextAlign.center,

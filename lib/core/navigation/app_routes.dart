@@ -32,6 +32,9 @@ class AppRoutes {
   static const String staffQueue = 'staff-order-queue';
   static const String addressBook = 'address-book';
   static const String editProfile = 'edit-profile';
+  static const String changePassword = 'change-password';
+  static const String initialPasswordSetup = 'initial-password-setup';
+  static const String cart = 'cart';
   
   // Pre-defined paths
   static const String splashPath = '/';
@@ -58,4 +61,7 @@ class AppRoutes {
   static const String staffQueuePath = '/staff/orders';
   static const String addressBookPath = '/profile/addresses';
   static const String editProfilePath = '/profile/edit';
+  static const String changePasswordPath = '/profile/change-password';
+  static const String initialPasswordSetupPath = '/setup-password';
+  static const String cartPath = '/cart';
 }

@@ -4,6 +4,10 @@ import 'package:app_quanly_giaiui/core/navigation/app_routes.dart';
 import 'package:app_quanly_giaiui/core/theme/app_colors.dart';
 import 'package:app_quanly_giaiui/core/theme/app_typography.dart';
 import 'package:app_quanly_giaiui/features/order/data/order_repository.dart';
+import 'package:app_quanly_giaiui/features/order/domain/cart_item.dart';
+import 'package:app_quanly_giaiui/features/order/domain/cart_store.dart';
+import 'package:app_quanly_giaiui/features/order/widgets/cart_icon_button.dart';
+import 'package:app_quanly_giaiui/features/order/widgets/measurement_dialog.dart';
 
 class ServiceDetailScreen extends StatefulWidget {
   const ServiceDetailScreen({required this.serviceId, super.key});
@@ -26,6 +30,49 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
 
   void _startOrder(int priceId) {
     context.pushNamed(AppRoutes.createOrder, extra: priceId);
+  }
+
+  Future<void> _addPriceToCart(
+    LaundryPriceOption price,
+    List<LaundryPriceOption> allPrices,
+  ) async {
+    await CartStore.instance.restore(allPrices);
+    if (!mounted) return;
+
+    final value = await showDialog<String>(
+      context: context,
+      builder: (_) => MeasurementDialog(
+        title: 'Thêm ${price.itemTypeName}',
+        initialValue: '1',
+        label: price.unitSymbol.toLowerCase() == 'kg'
+            ? 'Khối lượng (kg)'
+            : 'Số lượng',
+        unit: price.unitSymbol,
+        submitLabel: 'Thêm vào giỏ',
+      ),
+    );
+    if (value == null || !mounted) return;
+
+    final measurement = num.tryParse(value.replaceAll(',', '.'));
+    if (measurement == null ||
+        !measurement.isFinite ||
+        measurement <= 0 ||
+        measurement > 99999999.99 ||
+        measurement * 100 != (measurement * 100).round()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Nhập số lượng hợp lệ, tối đa 2 chữ số thập phân.'),
+        ),
+      );
+      return;
+    }
+
+    CartStore.instance.add(
+      CartItem(price: price, measurement: measurement),
+    );
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Đã thêm ${price.itemTypeName} vào giỏ.')),
+    );
   }
 
   IconData _serviceIcon(String name) {
@@ -88,6 +135,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                 expandedHeight: 210,
                 pinned: true,
                 title: Text(serviceName),
+                actions: const [CartIconButton()],
                 flexibleSpace: FlexibleSpaceBar(
                   background: Container(
                     color: svcColor.withValues(alpha: 0.1),
@@ -140,7 +188,8 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                       ),
                       columnWidths: const {
                         0: FlexColumnWidth(2),
-                        1: FlexColumnWidth(3),
+                        1: FlexColumnWidth(2.5),
+                        2: FlexColumnWidth(1),
                       },
                       children: [
                         TableRow(
@@ -169,6 +218,16 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                                 ),
                               ),
                             ),
+                            Padding(
+                              padding: const EdgeInsets.all(8),
+                              child: Text(
+                                'Thêm',
+                                textAlign: TextAlign.center,
+                                style: AppTypography.bodySmall.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
                           ],
                         ),
                         ...prices.map(
@@ -186,6 +245,17 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                                 child: Text(
                                   '${price.unitPriceVnd.toStringAsFixed(0)} đ / ${price.unitSymbol}',
                                   style: AppTypography.bodyText,
+                                ),
+                              ),
+                              IconButton(
+                                tooltip: 'Thêm vào giỏ',
+                                onPressed: () => _addPriceToCart(
+                                  price,
+                                  snapshot.data!,
+                                ),
+                                icon: const Icon(
+                                  Icons.add_shopping_cart_outlined,
+                                  color: AppColors.primary,
                                 ),
                               ),
                             ],

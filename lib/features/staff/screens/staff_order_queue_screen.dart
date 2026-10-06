@@ -3,6 +3,7 @@ import 'package:app_quanly_giaiui/core/theme/app_colors.dart';
 import 'package:app_quanly_giaiui/core/theme/app_typography.dart';
 import 'package:app_quanly_giaiui/features/auth/data/auth_repository.dart';
 import 'package:app_quanly_giaiui/features/order/data/order_repository.dart';
+import 'package:app_quanly_giaiui/features/order/widgets/order_confirmation_info.dart';
 
 class StaffOrderQueueScreen extends StatefulWidget {
   const StaffOrderQueueScreen({super.key});
@@ -230,6 +231,15 @@ class _StaffOrderCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(order.lineDescription, style: AppTypography.bodyText),
+          if (order.logisticsSummary case final logistics?) ...[
+            const SizedBox(height: 4),
+            Text(logistics, style: AppTypography.bodySmall),
+          ],
+          const SizedBox(height: 12),
+          OrderConfirmationInfo(
+            details: order.toDisplayDetails(),
+            compact: true,
+          ),
           const SizedBox(height: 8),
           Text(
             '${order.totalVnd.toStringAsFixed(0)} đ',

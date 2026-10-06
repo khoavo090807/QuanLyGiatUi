@@ -8,6 +8,8 @@ import 'package:app_quanly_giaiui/core/navigation/app_routes.dart';
 import 'package:app_quanly_giaiui/features/auth/data/auth_repository.dart';
 import 'package:app_quanly_giaiui/features/notification/data/notification_repository.dart';
 import 'package:app_quanly_giaiui/features/order/data/order_repository.dart';
+import 'package:app_quanly_giaiui/features/order/domain/cart_store.dart';
+import 'package:app_quanly_giaiui/features/order/widgets/cart_icon_button.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
@@ -36,6 +38,7 @@ class HomeScreenState extends State<HomeScreen> {
 
   Future<_HomeData> _loadHomeData() async {
     final prices = await _repository.getActivePrices();
+    await CartStore.instance.restore(prices);
     List<LaundryOrderRecord> orders = const [];
     List<String> roles = const [];
     AuthenticatedProfile? profile;
@@ -180,6 +183,7 @@ class HomeScreenState extends State<HomeScreen> {
               ],
             ),
           ),
+          const CartIconButton(),
           ValueListenableBuilder<int>(
             valueListenable: widget.unreadNotificationCount,
             builder: (context, unreadCount, child) => IconButton(
@@ -272,6 +276,15 @@ class HomeScreenState extends State<HomeScreen> {
                       color: Colors.white.withValues(alpha: 0.9),
                     ),
                   ),
+                  if (order.logisticsSummary case final logistics?) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      logistics,
+                      style: AppTypography.bodySmall.copyWith(
+                        color: Colors.white.withValues(alpha: 0.82),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 8),
                   // Progress bar
                   ClipRRect(

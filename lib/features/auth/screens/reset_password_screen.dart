@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -21,13 +23,69 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   bool _isSaving = false;
   bool _obscurePassword = true;
   bool _obscureConfirmation = true;
+  bool _isCheckingRecoveryLink = true;
+  bool _hasRecoverySession = false;
+  String? _recoveryAccountName;
+  String? _recoveryAccountEmail;
   String? _errorMessage;
+  StreamSubscription<AuthState>? _authSubscription;
+  Timer? _recoveryCheckTimeout;
 
-  bool get _hasRecoverySession =>
-      Supabase.instance.client.auth.currentSession != null;
+  @override
+  void initState() {
+    super.initState();
+    final auth = Supabase.instance.client.auth;
+    _hasRecoverySession = auth.currentSession != null;
+    _isCheckingRecoveryLink = !_hasRecoverySession;
+    _setRecoveryAccount(auth.currentUser);
+
+    // The app link can open this route a moment before Supabase finishes
+    // exchanging its one-time code for a recovery session. Listen for that
+    // event so we don't incorrectly show the expired-link screen meanwhile.
+    _authSubscription = auth.onAuthStateChange.listen(
+      (state) {
+        if (state.event == AuthChangeEvent.passwordRecovery && mounted) {
+          _recoveryCheckTimeout?.cancel();
+          setState(() {
+            _hasRecoverySession = state.session != null;
+            _isCheckingRecoveryLink = false;
+            _setRecoveryAccount(state.session?.user);
+          });
+        }
+      },
+      onError: (Object _) => _finishRecoveryCheck(),
+    );
+
+    if (_isCheckingRecoveryLink) {
+      _recoveryCheckTimeout = Timer(
+        const Duration(seconds: 10),
+        _finishRecoveryCheck,
+      );
+    }
+  }
+
+  void _finishRecoveryCheck() {
+    if (!mounted || !_isCheckingRecoveryLink) return;
+    _recoveryCheckTimeout?.cancel();
+    setState(() {
+      _hasRecoverySession =
+          Supabase.instance.client.auth.currentSession != null;
+      _isCheckingRecoveryLink = false;
+      _setRecoveryAccount(Supabase.instance.client.auth.currentUser);
+    });
+  }
+
+  void _setRecoveryAccount(User? user) {
+    final metadata = user?.userMetadata;
+    _recoveryAccountName = metadata?['full_name'] as String? ??
+        metadata?['name'] as String?;
+    _recoveryAccountEmail = user?.email;
+  }
 
   @override
   void dispose() {
+    _recoveryCheckTimeout?.cancel();
+    _authSubscription?.cancel();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
@@ -79,13 +137,23 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                   ),
                   const SizedBox(height: 20),
                   Text(
-                    hasRecoverySession
+                    _isCheckingRecoveryLink
+                        ? 'Đang xác minh liên kết đặt lại mật khẩu...'
+                        : hasRecoverySession
                         ? 'Tạo mật khẩu mới cho tài khoản của bạn.'
                         : 'Liên kết không hợp lệ hoặc đã hết hạn.',
                     style: AppTypography.bodyText,
                     textAlign: TextAlign.center,
                   ),
-                  if (hasRecoverySession) ...[
+                  if (_isCheckingRecoveryLink) ...[
+                    const SizedBox(height: 24),
+                    const Center(child: CircularProgressIndicator()),
+                  ] else if (hasRecoverySession) ...[
+                    const SizedBox(height: 24),
+                    _RecoveryAccountCard(
+                      name: _recoveryAccountName,
+                      email: _recoveryAccountEmail,
+                    ),
                     const SizedBox(height: 24),
                     TextFormField(
                       controller: _passwordController,
@@ -169,6 +237,61 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _RecoveryAccountCard extends StatelessWidget {
+  const _RecoveryAccountCard({this.name, this.email});
+
+  final String? name;
+  final String? email;
+
+  @override
+  Widget build(BuildContext context) {
+    final displayName = name?.trim();
+    final displayEmail = email?.trim();
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.primaryLight,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          const CircleAvatar(
+            backgroundColor: AppColors.surface,
+            child: Icon(Icons.person_outline, color: AppColors.primary),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Đang đặt lại mật khẩu cho',
+                  style: AppTypography.bodySmall.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                if (displayName != null && displayName.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(displayName, style: AppTypography.bodyText),
+                ],
+                if (displayEmail != null && displayEmail.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    displayEmail,
+                    style: AppTypography.bodySmall,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -16,6 +16,7 @@ import 'package:app_quanly_giaiui/features/main_shell.dart';
 import 'package:app_quanly_giaiui/features/services/screens/service_detail_screen.dart';
 import 'package:app_quanly_giaiui/features/order/screens/create_order_screen.dart';
 import 'package:app_quanly_giaiui/features/order/screens/order_summary_screen.dart';
+import 'package:app_quanly_giaiui/features/order/screens/cart_screen.dart';
 import 'package:app_quanly_giaiui/features/tracking/screens/tracking_screen.dart';
 import 'package:app_quanly_giaiui/features/payment/screens/payment_screen.dart';
 import 'package:app_quanly_giaiui/features/loyalty/screens/loyalty_screen.dart';
@@ -23,6 +24,8 @@ import 'package:app_quanly_giaiui/features/loyalty/screens/vouchers_screen.dart'
 import 'package:app_quanly_giaiui/features/staff/screens/staff_order_queue_screen.dart';
 import 'package:app_quanly_giaiui/features/profile/screens/address_book_screen.dart';
 import 'package:app_quanly_giaiui/features/profile/screens/edit_profile_screen.dart';
+import 'package:app_quanly_giaiui/features/profile/screens/change_password_screen.dart';
+import 'package:app_quanly_giaiui/features/auth/screens/initial_password_setup_screen.dart';
 import 'package:app_quanly_giaiui/features/review/screens/review_screen.dart';
 import 'app_routes.dart';
 
@@ -32,12 +35,13 @@ class AppRouter {
   static List<String>? _cachedRoles;
 
   static String defaultRouteForRoles(List<String> roles) {
-    final normalized = roles.map((role) => role.trim()).toList(growable: false);
-    final hasStaffRole = normalized.any(
-      {'Nhân viên', 'Quản lý', 'Chủ cửa hàng'}.contains,
-    );
-    return hasStaffRole ? AppRoutes.staffQueuePath : AppRoutes.homePath;
+    return AppRoutes.homePath;
   }
+
+  static bool _isStaffAccount(List<String> roles) =>
+      roles.map((role) => role.trim()).any(
+        {'Nhân viên', 'Quản lý', 'Chủ cửa hàng'}.contains,
+      );
 
   static Future<List<String>> _loadCurrentRoles() async {
     final cachedRoles = _cachedRoles;
@@ -65,7 +69,12 @@ class AppRouter {
             final repository = AuthRepository();
             await repository.ensureGoogleCustomerProfile();
             _cachedRoles = null;
-            return defaultRouteForRoles(await _loadCurrentRoles());
+            final roles = await _loadCurrentRoles();
+            if (_isStaffAccount(roles)) {
+              await repository.signOut();
+              return AppRoutes.loginPath;
+            }
+            return defaultRouteForRoles(roles);
           },
         ),
       ),
@@ -119,6 +128,11 @@ class AppRouter {
         name: AppRoutes.resetPassword,
         builder: (context, state) => const ResetPasswordScreen(),
       ),
+      GoRoute(
+        path: AppRoutes.initialPasswordSetupPath,
+        name: AppRoutes.initialPasswordSetup,
+        builder: (context, state) => const InitialPasswordSetupScreen(),
+      ),
 
       // Main App Shell (Bottom Navigation)
       GoRoute(
@@ -145,6 +159,16 @@ class AppRouter {
         name: AppRoutes.profile,
         builder: (context, state) => const MainShell(initialIndex: 3),
       ),
+      GoRoute(
+        path: AppRoutes.cartPath,
+        name: AppRoutes.cart,
+        builder: (context, state) => const CartScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.changePasswordPath,
+        name: AppRoutes.changePassword,
+        builder: (context, state) => const ChangePasswordScreen(),
+      ),
 
       // Service Details
       GoRoute(
@@ -160,6 +184,7 @@ class AppRouter {
         name: AppRoutes.createOrder,
         builder: (context, state) => CreateOrderScreen(
           initialPriceId: state.extra is int ? state.extra as int : null,
+          checkoutCart: state.extra == 'cart',
         ),
         routes: [
           GoRoute(
@@ -245,20 +270,48 @@ class AppRouter {
         path == AppRoutes.registerPath ||
         path == AppRoutes.forgotPasswordPath;
     final isPasswordResetRoute = path == AppRoutes.resetPasswordPath;
+    final isInitialPasswordSetupRoute =
+        path == AppRoutes.initialPasswordSetupPath;
     final isPublicRoute = isAuthRoute || isOtpRoute || isPasswordResetRoute;
 
     if (!SupabaseConfig.isConfigured) {
       return isPublicRoute ? null : AppRoutes.loginPath;
     }
 
+    // A password recovery link establishes a temporary authenticated session.
+    // Keep the recovery screen independent from profile/role lookups: recovery
+    // must work even when the customer's profile has not been created yet or
+    // the network is slow while fetching roles.
+    if (isPasswordResetRoute) return null;
+
     final isSignedIn = Supabase.instance.client.auth.currentSession != null;
+    if (!isSignedIn && !isPublicRoute) return AppRoutes.loginPath;
+
+    final authRepository = AuthRepository();
+    if (isSignedIn && authRepository.requiresInitialGooglePassword) {
+      return isInitialPasswordSetupRoute
+          ? null
+          : AppRoutes.initialPasswordSetupPath;
+    }
+    if (isSignedIn && isInitialPasswordSetupRoute) {
+      return AppRoutes.splashPath;
+    }
+
     if (path == AppRoutes.splashPath) {
       return isSignedIn ? null : AppRoutes.loginPath;
     }
 
-    if (!isSignedIn && !isPublicRoute) return AppRoutes.loginPath;
     if (isSignedIn && isAuthRoute) {
       return AppRoutes.splashPath;
+    }
+
+    if (isSignedIn && path != AppRoutes.splashPath) {
+      final roles = await _loadCurrentRoles();
+      if (_isStaffAccount(roles)) {
+        await Supabase.instance.client.auth.signOut();
+        return AppRoutes.loginPath;
+      }
+      if (path == AppRoutes.staffQueuePath) return AppRoutes.homePath;
     }
 
     if (isSignedIn &&
@@ -266,11 +319,7 @@ class AppRouter {
             path == AppRoutes.myOrdersPath ||
             path == AppRoutes.notificationsPath ||
             path == AppRoutes.profilePath)) {
-      final roles = await _loadCurrentRoles();
-      if (defaultRouteForRoles(roles) == AppRoutes.staffQueuePath &&
-          path != AppRoutes.staffQueuePath) {
-        return AppRoutes.staffQueuePath;
-      }
+      return null;
     }
 
     return null;
@@ -287,7 +336,12 @@ class _AuthRefreshListenable extends ChangeNotifier {
       ) {
         AppRouter._cachedRoles = null;
         if (authState.event == AuthChangeEvent.passwordRecovery) {
-          AppRouter.router.go(AppRoutes.resetPasswordPath);
+          // Supabase emits this event while handling the incoming app link.
+          // Navigate after that callback has finished to avoid re-entering
+          // GoRouter during deep-link/session restoration.
+          scheduleMicrotask(
+            () => AppRouter.router.go(AppRoutes.resetPasswordPath),
+          );
         }
         notifyListeners();
       }, onError: (Object error, StackTrace stackTrace) {});

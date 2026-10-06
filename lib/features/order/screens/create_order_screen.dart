@@ -1,19 +1,28 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:app_quanly_giaiui/core/navigation/app_routes.dart';
 import 'package:app_quanly_giaiui/core/theme/app_colors.dart';
 import 'package:app_quanly_giaiui/core/theme/app_typography.dart';
 import 'package:app_quanly_giaiui/features/order/data/order_repository.dart';
+import 'package:app_quanly_giaiui/features/order/data/delivery_fee_quote.dart';
 import 'package:app_quanly_giaiui/features/order/domain/cart_item.dart';
+import 'package:app_quanly_giaiui/features/order/domain/cart_store.dart';
 import 'package:app_quanly_giaiui/features/order/domain/laundry_order_pricing.dart';
 import 'package:app_quanly_giaiui/features/loyalty/data/loyalty_repository.dart';
 import 'package:app_quanly_giaiui/features/profile/data/address_repository.dart';
 import 'package:app_quanly_giaiui/features/profile/data/current_location_service.dart';
 
 class CreateOrderScreen extends StatefulWidget {
-  const CreateOrderScreen({this.initialPriceId, super.key});
+  const CreateOrderScreen({
+    this.initialPriceId,
+    this.checkoutCart = false,
+    super.key,
+  });
 
   final int? initialPriceId;
+  final bool checkoutCart;
 
   @override
   State<CreateOrderScreen> createState() => _CreateOrderScreenState();
@@ -28,28 +37,47 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   final _loyaltyRepository = LoyaltyRepository();
   final _addressRepository = AddressRepository();
   final _currentLocationService = CurrentLocationService();
+  final _cartStore = CartStore.instance;
+  final List<CartItem> _draftItems = [];
   late Future<_OrderFormData> _formDataFuture;
 
   LaundryPriceOption? _selectedPrice;
-  final List<CartItem> _cart = [];
-  CustomerAddress? _selectedAddress;
+  List<CartItem> get _cart =>
+      widget.checkoutCart ? _cartStore.items : _draftItems;
+  CustomerAddress? _selectedPickupAddress;
+  CustomerAddress? _selectedDeliveryAddress;
   CurrentLocationResult? _currentPickupLocation;
-  bool _isResolvingLocation = false;
+  CurrentLocationResult? _currentDeliveryLocation;
+  final _pickupAddressOverride = TextEditingController();
+  final _deliveryAddressOverride = TextEditingController();
+  bool _isResolvingPickupLocation = false;
+  bool _isResolvingDeliveryLocation = false;
   String _paymentMethod = 'Tiền mặt';
   String _pickupMethod = 'Tại cửa hàng';
   String _serviceSearchQuery = '';
   bool _provideLaundryDetails = false;
   late DateTime _appointment;
   bool _usePointsForDiscount = false;
+  String _deliveryMethod = 'Tại cửa hàng';
   int _availablePoints = 0;
   bool _isLoadingPoints = true;
   bool _pointsLoadFailed = false;
+  Timer? _deliveryQuoteDebounce;
+  DeliveryFeeQuote? _deliveryQuote;
+  String? _quotedPickupAddress;
+  String? _quotedDeliveryAddress;
+  String? _deliveryQuoteError;
+  bool _isLoadingDeliveryQuote = false;
+  int _deliveryQuoteGeneration = 0;
 
   @override
   void initState() {
     super.initState();
     final tomorrow = DateTime.now().add(const Duration(days: 1));
     _appointment = DateTime(tomorrow.year, tomorrow.month, tomorrow.day, 10);
+    _provideLaundryDetails =
+        widget.checkoutCart || widget.initialPriceId != null;
+    if (widget.checkoutCart) _cartStore.addListener(_onCartChanged);
     _formDataFuture = _loadFormData();
     _loadAvailablePoints();
   }
@@ -70,8 +98,13 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       addressesFuture,
       vouchersFuture,
     ]);
+    final prices = result[0] as List<LaundryPriceOption>;
+    if (widget.checkoutCart) {
+      await _cartStore.restore(prices);
+      if (_cart.isNotEmpty) _provideLaundryDetails = true;
+    }
     return _OrderFormData(
-      prices: result[0] as List<LaundryPriceOption>,
+      prices: prices,
       addresses: result[1] as List<CustomerAddress>,
       vouchers: result[2] as List<LoyaltyVoucher>,
     );
@@ -79,10 +112,18 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
 
   @override
   void dispose() {
+    _deliveryQuoteDebounce?.cancel();
+    if (widget.checkoutCart) _cartStore.removeListener(_onCartChanged);
     _measurementController.dispose();
     _notesController.dispose();
     _promotionController.dispose();
+    _pickupAddressOverride.dispose();
+    _deliveryAddressOverride.dispose();
     super.dispose();
+  }
+
+  void _onCartChanged() {
+    if (mounted) setState(() {});
   }
 
   bool get _isWeightBased {
@@ -196,22 +237,65 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       return;
     }
 
+    final item = CartItem(price: price, measurement: measurement);
+    if (widget.checkoutCart) {
+      _cartStore.add(item);
+    } else {
+      _draftItems.add(item);
+    }
     setState(() {
-      _cart.add(CartItem(price: price, measurement: measurement));
       _selectedPrice = null;
       _measurementController.clear();
     });
   }
 
   void _removeFromCart(int index) {
-    setState(() {
-      _cart.removeAt(index);
-    });
+    if (widget.checkoutCart) {
+      _cartStore.removeAt(index);
+    } else {
+      setState(() => _draftItems.removeAt(index));
+    }
   }
 
   void _clearCart() {
+    if (widget.checkoutCart) {
+      _cartStore.clear();
+    } else {
+      setState(() => _draftItems.clear());
+    }
+  }
+
+  Future<void> _setStoreInspectionMode(bool storeWillInspect) async {
+    if (storeWillInspect && widget.checkoutCart && _cart.isNotEmpty) {
+      final shouldClear = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Bỏ các mục trong giỏ?'),
+          content: const Text(
+            'Khi để cửa hàng tự kiểm nhận, các dịch vụ và số lượng đang chọn sẽ không được gửi cùng đơn.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Quay lại'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Bỏ mục và tiếp tục'),
+            ),
+          ],
+        ),
+      );
+      if (shouldClear != true || !mounted) return;
+      _cartStore.clear();
+    }
+
+    if (!mounted) return;
+    if (storeWillInspect && !widget.checkoutCart) _draftItems.clear();
     setState(() {
-      _cart.clear();
+      _provideLaundryDetails = !storeWillInspect;
+      _selectedPrice = null;
+      _measurementController.clear();
     });
   }
 
@@ -252,16 +336,33 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     });
   }
 
-  Future<void> _useCurrentLocation() async {
-    if (_isResolvingLocation) return;
-    setState(() => _isResolvingLocation = true);
+  Future<void> _useCurrentLocation({required bool forDelivery}) async {
+    final resolving = forDelivery
+        ? _isResolvingDeliveryLocation
+        : _isResolvingPickupLocation;
+    if (resolving) return;
+    setState(() {
+      if (forDelivery) {
+        _isResolvingDeliveryLocation = true;
+      } else {
+        _isResolvingPickupLocation = true;
+      }
+    });
     try {
       final location = await _currentLocationService.getCurrentAddress();
       if (!mounted) return;
       setState(() {
-        _currentPickupLocation = location;
-        _selectedAddress = null;
+        if (forDelivery) {
+          _currentDeliveryLocation = location;
+          _selectedDeliveryAddress = null;
+          _deliveryAddressOverride.text = location.address;
+        } else {
+          _currentPickupLocation = location;
+          _selectedPickupAddress = null;
+          _pickupAddressOverride.text = location.address;
+        }
       });
+      _scheduleDeliveryQuote();
     } catch (error) {
       if (mounted) {
         final message = error is CurrentLocationException
@@ -270,8 +371,203 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
         _showMessage(message);
       }
     } finally {
-      if (mounted) setState(() => _isResolvingLocation = false);
+      if (mounted) {
+        setState(() {
+          if (forDelivery) {
+            _isResolvingDeliveryLocation = false;
+          } else {
+            _isResolvingPickupLocation = false;
+          }
+        });
+      }
     }
+  }
+
+  String? _addressFrom(
+    TextEditingController override,
+    CurrentLocationResult? location,
+    CustomerAddress? savedAddress,
+  ) {
+    final entered = override.text.trim();
+    if (entered.isNotEmpty) return entered;
+    return location?.address.trim() ?? savedAddress?.address.trim();
+  }
+
+  String? get _pickupAddress => _addressFrom(
+    _pickupAddressOverride,
+    _currentPickupLocation,
+    _selectedPickupAddress,
+  );
+
+  String? get _deliveryAddress => _addressFrom(
+    _deliveryAddressOverride,
+    _currentDeliveryLocation,
+    _selectedDeliveryAddress,
+  );
+
+  String? get _quotePickupAddress =>
+      _pickupMethod == 'Tại nhà' ? _pickupAddress : null;
+
+  String? get _quoteDeliveryAddress =>
+      _deliveryMethod == 'Tại nhà' ? _deliveryAddress : null;
+
+  bool get _hasHomeDeliveryLeg =>
+      _pickupMethod == 'Tại nhà' || _deliveryMethod == 'Tại nhà';
+
+  bool get _hasCurrentDeliveryQuote {
+    final quote = _deliveryQuote;
+    return quote != null &&
+        quote.expiresAt.isAfter(DateTime.now()) &&
+        _quotedPickupAddress == _quotePickupAddress &&
+        _quotedDeliveryAddress == _quoteDeliveryAddress;
+  }
+
+  void _scheduleDeliveryQuote() {
+    _deliveryQuoteDebounce?.cancel();
+    final generation = ++_deliveryQuoteGeneration;
+    final pickup = _quotePickupAddress;
+    final delivery = _quoteDeliveryAddress;
+
+    if ((pickup == null || pickup.isEmpty) &&
+        (delivery == null || delivery.isEmpty)) {
+      setState(() {
+        _deliveryQuote = null;
+        _quotedPickupAddress = null;
+        _quotedDeliveryAddress = null;
+        _deliveryQuoteError = null;
+        _isLoadingDeliveryQuote = false;
+      });
+      return;
+    }
+
+    setState(() {
+      _deliveryQuote = null;
+      _quotedPickupAddress = null;
+      _quotedDeliveryAddress = null;
+      _deliveryQuoteError = null;
+      _isLoadingDeliveryQuote = true;
+    });
+    _deliveryQuoteDebounce = Timer(const Duration(milliseconds: 700), () {
+      _fetchDeliveryQuote(generation, pickup, delivery);
+    });
+  }
+
+  Future<DeliveryFeeQuote?> _fetchDeliveryQuote(
+    int generation,
+    String? pickup,
+    String? delivery,
+  ) async {
+    try {
+      final quote = await _repository.getDeliveryFeeQuote(
+        pickupAddress: pickup,
+        deliveryAddress: delivery,
+      );
+      if (!mounted || generation != _deliveryQuoteGeneration) return null;
+      setState(() {
+        _deliveryQuote = quote;
+        _quotedPickupAddress = pickup;
+        _quotedDeliveryAddress = delivery;
+        _deliveryQuoteError = null;
+        _isLoadingDeliveryQuote = false;
+      });
+      return quote;
+    } catch (error) {
+      if (!mounted || generation != _deliveryQuoteGeneration) return null;
+      setState(() {
+        _deliveryQuote = null;
+        _deliveryQuoteError = error.toString().replaceFirst('Bad state: ', '');
+        _isLoadingDeliveryQuote = false;
+      });
+      return null;
+    }
+  }
+
+  Future<DeliveryFeeQuote?> _ensureDeliveryQuote() async {
+    if (!_hasHomeDeliveryLeg) return null;
+    final pickup = _quotePickupAddress;
+    final delivery = _quoteDeliveryAddress;
+    if ((pickup == null && _pickupMethod == 'Tại nhà') ||
+        (delivery == null && _deliveryMethod == 'Tại nhà')) {
+      _showMessage('Vui lòng nhập địa chỉ cho từng chặng giao nhận tại nhà.');
+      return null;
+    }
+    if (_hasCurrentDeliveryQuote) return _deliveryQuote;
+
+    _deliveryQuoteDebounce?.cancel();
+    final generation = ++_deliveryQuoteGeneration;
+    setState(() {
+      _isLoadingDeliveryQuote = true;
+      _deliveryQuoteError = null;
+    });
+    final quote = await _fetchDeliveryQuote(generation, pickup, delivery);
+    if (quote == null && mounted) {
+      _showMessage(_deliveryQuoteError ?? 'Không tính được phí giao nhận.');
+    }
+    return quote;
+  }
+
+  String _formatDistance(int meters) =>
+      '${(meters / 1000).toStringAsFixed(1)} km';
+
+  Widget _deliveryFeeEstimate() {
+    final quote = _hasCurrentDeliveryQuote ? _deliveryQuote : null;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Phí giao nhận theo từng chặng', style: AppTypography.heading3),
+            const SizedBox(height: 8),
+            if (_pickupMethod == 'Tại nhà')
+              _EstimateRow(
+                label: quote == null
+                    ? 'Chặng lấy đồ'
+                    : 'Lấy đồ · ${_formatDistance(quote.pickupDistanceMeters)}',
+                totalMinorUnits: (quote?.pickupFeeVnd ?? 0) * 100,
+              ),
+            if (_deliveryMethod == 'Tại nhà')
+              _EstimateRow(
+                label: quote == null
+                    ? 'Chặng giao đồ'
+                    : 'Giao đồ · ${_formatDistance(quote.deliveryDistanceMeters)}',
+                totalMinorUnits: (quote?.deliveryFeeVnd ?? 0) * 100,
+              ),
+            const SizedBox(height: 8),
+            const Text(
+              'Miễn phí 3 km đầu mỗi chặng; phần vượt tính 5.000đ/km và '
+              'làm tròn lên 1.000đ. Quãng đường theo tuyến xe chạy từ cửa hàng.',
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
+            if (_isLoadingDeliveryQuote) ...[
+              const SizedBox(height: 10),
+              const LinearProgressIndicator(),
+              const SizedBox(height: 6),
+              const Text('Đang tính quãng đường thực tế...'),
+            ] else if (_deliveryQuoteError != null) ...[
+              const SizedBox(height: 10),
+              Text(
+                _deliveryQuoteError!,
+                style: const TextStyle(color: AppColors.error),
+              ),
+            ] else if (quote != null) ...[
+              const Divider(height: 20),
+              _EstimateRow(
+                label: 'Tổng phí giao nhận dự kiến',
+                totalMinorUnits: quote.totalFeeVnd * 100,
+                emphasize: true,
+              ),
+            ] else ...[
+              const SizedBox(height: 8),
+              const Text(
+                'Nhập địa chỉ để xem phí cho các chặng tại nhà.',
+                style: TextStyle(color: AppColors.textSecondary),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   void _showMessage(String message) {
@@ -372,19 +668,23 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     });
   }
 
-  void _continueToSummary(List<LoyaltyVoucher> vouchers) {
+  Future<void> _continueToSummary(List<LoyaltyVoucher> vouchers) async {
     if (_provideLaundryDetails && _cart.isEmpty) {
       _showMessage(
         'Thêm ít nhất một loại đồ hoặc bỏ chọn mục nhập thông tin đồ giặt.',
       );
       return;
     }
-    if (_pickupMethod == 'Tại nhà' &&
-        _selectedAddress == null &&
-        _currentPickupLocation == null) {
-      _showMessage('Chọn địa chỉ đã lưu hoặc dùng vị trí hiện tại.');
+    if (_pickupMethod == 'Tại nhà' && _pickupAddress == null) {
+      _showMessage('Nhập, chọn hoặc dùng vị trí hiện tại cho địa chỉ lấy đồ.');
       return;
     }
+    if (_deliveryMethod == 'Tại nhà' && _deliveryAddress == null) {
+      _showMessage('Nhập, chọn hoặc dùng vị trí hiện tại cho địa chỉ giao đồ.');
+      return;
+    }
+    final deliveryQuote = await _ensureDeliveryQuote();
+    if (_hasHomeDeliveryLeg && deliveryQuote == null) return;
 
     final selectedVoucher = vouchers
         .where(
@@ -397,12 +697,20 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       AppRoutes.orderSummary,
       extra: {
         'cart': _cart,
+        'clearCartAfterSubmit': widget.checkoutCart,
         'provideLaundryDetails': _provideLaundryDetails,
         'paymentMethod': _paymentMethod,
         'pickupMethod': _pickupMethod,
-        'address': _pickupMethod == 'Tại nhà'
-            ? _currentPickupLocation?.address ?? _selectedAddress?.address
+        'deliveryMethod': _deliveryMethod,
+        'address': _pickupMethod == 'Tại nhà' ? _pickupAddress : null,
+        'deliveryAddress': _deliveryMethod == 'Tại nhà'
+            ? _deliveryAddress
             : null,
+        'deliveryQuoteId': deliveryQuote?.quoteId,
+        'pickupDistanceMeters': deliveryQuote?.pickupDistanceMeters ?? 0,
+        'pickupDeliveryFeeVnd': deliveryQuote?.pickupFeeVnd ?? 0,
+        'deliveryDistanceMeters': deliveryQuote?.deliveryDistanceMeters ?? 0,
+        'deliveryFeeVnd': deliveryQuote?.deliveryFeeVnd ?? 0,
         'appointment': _appointment,
         'notes': _notesController.text.trim(),
         'usePoints': _provideLaundryDetails && _usePointsForDiscount,
@@ -468,20 +776,26 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                   )
               ? _selectedPrice
               : null;
-          final selectedAddressId = _selectedAddress?.id;
-          if (selectedAddressId != null) {
-            _selectedAddress = addresses
-                .where((address) => address.id == selectedAddressId)
+          final selectedPickupAddressId = _selectedPickupAddress?.id;
+          if (selectedPickupAddressId != null) {
+            _selectedPickupAddress = addresses
+                .where((address) => address.id == selectedPickupAddressId)
                 .firstOrNull;
           }
-          if (_selectedAddress == null && _currentPickupLocation == null) {
+          final selectedDeliveryAddressId = _selectedDeliveryAddress?.id;
+          if (selectedDeliveryAddressId != null) {
+            _selectedDeliveryAddress = addresses
+                .where((address) => address.id == selectedDeliveryAddressId)
+                .firstOrNull;
+          }
+          if (_selectedPickupAddress == null && _currentPickupLocation == null) {
             for (final address in addresses) {
               if (address.isDefault) {
-                _selectedAddress = address;
+                _selectedPickupAddress = address;
                 break;
               }
             }
-            _selectedAddress ??= addresses.firstOrNull;
+            _selectedPickupAddress ??= addresses.firstOrNull;
           }
           return Form(
             key: _formKey,
@@ -495,12 +809,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                     'Bật nếu bạn chưa biết số lượng hoặc khối lượng đồ giặt.',
                   ),
                   value: !_provideLaundryDetails,
-                  onChanged: (storeWillInspect) => setState(() {
-                    _provideLaundryDetails = !storeWillInspect;
-                    _selectedPrice = null;
-                    _measurementController.clear();
-                    if (storeWillInspect) _cart.clear();
-                  }),
+                  onChanged: _setStoreInspectionMode,
                 ),
                 if (!_provideLaundryDetails) ...[
                   const SizedBox(height: 8),
@@ -714,7 +1023,10 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                   ],
                 ],
                 const SizedBox(height: 28),
-                Text('Hình thức nhận đồ', style: AppTypography.heading3),
+                Text(
+                  'Hình thức nhân viên nhận đồ',
+                  style: AppTypography.heading3,
+                ),
                 const SizedBox(height: 12),
                 SegmentedButton<String>(
                   segments: const [
@@ -732,98 +1044,121 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                   selected: {_pickupMethod},
                   onSelectionChanged: (selection) {
                     setState(() => _pickupMethod = selection.first);
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) _scheduleDeliveryQuote();
+                    });
                   },
                 ),
                 if (_pickupMethod == 'Tại nhà') ...[
                   const SizedBox(height: 16),
-                  if (addresses.isEmpty)
-                    const Text('Thêm địa chỉ trước khi đặt lấy đồ tại nhà.')
-                  else
-                    DropdownButtonFormField<int>(
-                      key: ValueKey(
-                        addresses.map((address) => address.id).join(','),
-                      ),
-                      initialValue: _selectedAddress?.id,
-                      isExpanded: true,
-                      decoration: const InputDecoration(
-                        labelText: 'Địa chỉ lấy đồ',
-                        prefixIcon: Icon(Icons.location_on_outlined),
-                      ),
-                      items: addresses.map((address) {
-                        return DropdownMenuItem(
-                          value: address.id,
-                          child: Text(
-                            address.address,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        );
-                      }).toList(),
-                      onChanged: (addressId) => setState(() {
-                        _selectedAddress = addressId == null
-                            ? null
-                            : addresses.firstWhere(
-                                (address) => address.id == addressId,
-                              );
+                  _AddressInput(
+                    label: 'Địa chỉ lấy đồ',
+                    addresses: addresses,
+                    selectedAddress: _selectedPickupAddress,
+                    currentLocation: _currentPickupLocation,
+                    controller: _pickupAddressOverride,
+                    isResolvingLocation: _isResolvingPickupLocation,
+                    onSelectAddress: (address) {
+                      setState(() {
+                        _selectedPickupAddress = address;
                         _currentPickupLocation = null;
-                      }),
-                      validator: (value) =>
-                          value == null && _currentPickupLocation == null
-                          ? 'Chọn địa chỉ nhận đồ.'
-                          : null,
-                    ),
-                  OutlinedButton.icon(
-                    onPressed: _isResolvingLocation
-                        ? null
-                        : _useCurrentLocation,
-                    icon: _isResolvingLocation
-                        ? const SizedBox.square(
-                            dimension: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.my_location),
-                    label: Text(
-                      _isResolvingLocation
-                          ? 'Đang lấy vị trí...'
-                          : 'Dùng vị trí hiện tại',
-                    ),
-                  ),
-                  if (_currentPickupLocation case final location?)
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(
-                        Icons.check_circle,
-                        color: AppColors.primary,
-                      ),
-                      title: const Text('Đang dùng vị trí hiện tại'),
-                      subtitle: Text(
-                        '${location.address}\n'
-                        '${location.latitude.toStringAsFixed(6)}, '
-                        '${location.longitude.toStringAsFixed(6)} · '
-                        'sai số ±${location.accuracyMeters.ceil()} m',
-                      ),
-                      trailing: IconButton(
-                        tooltip: 'Bỏ chọn vị trí hiện tại',
-                        onPressed: () =>
-                            setState(() => _currentPickupLocation = null),
-                        icon: const Icon(Icons.close),
-                      ),
-                    ),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: TextButton.icon(
-                      onPressed: () async {
-                        await context.pushNamed(AppRoutes.addressBook);
+                        _pickupAddressOverride.text = address?.address ?? '';
+                      });
+                      _scheduleDeliveryQuote();
+                    },
+                    onAddressChanged: (_) => _scheduleDeliveryQuote(),
+                    onUseCurrentLocation: () =>
+                        _useCurrentLocation(forDelivery: false),
+                    onClearCurrentLocation: () => setState(() {
+                      _currentPickupLocation = null;
+                    }),
+                    onManageAddresses: () async {
+                      await context.pushNamed(AppRoutes.addressBook);
+                      if (mounted) {
+                        setState(() {
+                          _selectedPickupAddress = null;
+                          _formDataFuture = _loadFormData();
+                        });
+                        await _formDataFuture;
                         if (mounted) {
-                          setState(() {
-                            _selectedAddress = null;
-                            _formDataFuture = _loadFormData();
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (mounted) _scheduleDeliveryQuote();
                           });
                         }
-                      },
-                      icon: const Icon(Icons.edit_location_alt_outlined),
-                      label: const Text('Quản lý địa chỉ'),
-                    ),
+                      }
+                    },
                   ),
+                ],
+                const SizedBox(height: 20),
+                Text(
+                  'Hình thức nhân viên giao đồ',
+                  style: AppTypography.heading3,
+                ),
+                const SizedBox(height: 12),
+                SegmentedButton<String>(
+                  segments: const [
+                    ButtonSegment(
+                      value: 'Tại cửa hàng',
+                      icon: Icon(Icons.storefront_outlined),
+                      label: Text('Nhận tại cửa hàng'),
+                    ),
+                    ButtonSegment(
+                      value: 'Tại nhà',
+                      icon: Icon(Icons.local_shipping_outlined),
+                      label: Text('Giao tận nhà'),
+                    ),
+                  ],
+                  selected: {_deliveryMethod},
+                  onSelectionChanged: (selection) {
+                    setState(() => _deliveryMethod = selection.first);
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) _scheduleDeliveryQuote();
+                    });
+                  },
+                ),
+                if (_deliveryMethod == 'Tại nhà') ...[
+                  const SizedBox(height: 16),
+                  _AddressInput(
+                    label: 'Địa chỉ giao đồ',
+                    addresses: addresses,
+                    selectedAddress: _selectedDeliveryAddress,
+                    currentLocation: _currentDeliveryLocation,
+                    controller: _deliveryAddressOverride,
+                    isResolvingLocation: _isResolvingDeliveryLocation,
+                    onSelectAddress: (address) {
+                      setState(() {
+                        _selectedDeliveryAddress = address;
+                        _currentDeliveryLocation = null;
+                        _deliveryAddressOverride.text = address?.address ?? '';
+                      });
+                      _scheduleDeliveryQuote();
+                    },
+                    onAddressChanged: (_) => _scheduleDeliveryQuote(),
+                    onUseCurrentLocation: () =>
+                        _useCurrentLocation(forDelivery: true),
+                    onClearCurrentLocation: () => setState(() {
+                      _currentDeliveryLocation = null;
+                    }),
+                    onManageAddresses: () async {
+                      await context.pushNamed(AppRoutes.addressBook);
+                      if (mounted) {
+                        setState(() {
+                          _selectedDeliveryAddress = null;
+                          _formDataFuture = _loadFormData();
+                        });
+                        await _formDataFuture;
+                        if (mounted) {
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (mounted) _scheduleDeliveryQuote();
+                          });
+                        }
+                      }
+                    },
+                  ),
+                ],
+                if (_hasHomeDeliveryLeg) ...[
+                  const SizedBox(height: 16),
+                  _deliveryFeeEstimate(),
                 ],
                 const SizedBox(height: 20),
                 Text('Hình thức thanh toán', style: AppTypography.heading3),
@@ -895,6 +1230,127 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   String _formatVnd(num value) => '${value.toStringAsFixed(0)} đ';
 }
 
+class _AddressInput extends StatelessWidget {
+  const _AddressInput({
+    required this.label,
+    required this.addresses,
+    required this.selectedAddress,
+    required this.currentLocation,
+    required this.controller,
+    required this.isResolvingLocation,
+    required this.onSelectAddress,
+    required this.onAddressChanged,
+    required this.onUseCurrentLocation,
+    required this.onClearCurrentLocation,
+    required this.onManageAddresses,
+  });
+
+  final String label;
+  final List<CustomerAddress> addresses;
+  final CustomerAddress? selectedAddress;
+  final CurrentLocationResult? currentLocation;
+  final TextEditingController controller;
+  final bool isResolvingLocation;
+  final ValueChanged<CustomerAddress?> onSelectAddress;
+  final ValueChanged<String> onAddressChanged;
+  final VoidCallback onUseCurrentLocation;
+  final VoidCallback onClearCurrentLocation;
+  final Future<void> Function() onManageAddresses;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (addresses.isNotEmpty) ...[
+          DropdownButtonFormField<int>(
+            key: ValueKey('${label}_${addresses.map((address) => address.id).join(',')}'),
+            initialValue: selectedAddress?.id,
+            isExpanded: true,
+            decoration: InputDecoration(
+              labelText: '$label đã lưu',
+              prefixIcon: const Icon(Icons.location_on_outlined),
+            ),
+            items: [
+              const DropdownMenuItem<int>(
+                value: null,
+                child: Text('Không dùng địa chỉ đã lưu'),
+              ),
+              ...addresses.map(
+                (address) => DropdownMenuItem(
+                  value: address.id,
+                  child: Text(address.address, overflow: TextOverflow.ellipsis),
+                ),
+              ),
+            ],
+            onChanged: (addressId) => onSelectAddress(
+              addressId == null
+                  ? null
+                  : addresses.firstWhere((address) => address.id == addressId),
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+        TextFormField(
+          controller: controller,
+          maxLines: 2,
+          textInputAction: TextInputAction.done,
+          onChanged: onAddressChanged,
+          decoration: InputDecoration(
+            labelText: label,
+            hintText: 'Nhập địa chỉ hoặc chỉnh sửa địa chỉ hiện tại',
+            prefixIcon: const Icon(Icons.edit_location_alt_outlined),
+          ),
+          validator: (value) {
+            final hasAddress = value?.trim().isNotEmpty == true ||
+                selectedAddress != null ||
+                currentLocation != null;
+            return hasAddress ? null : 'Vui lòng nhập hoặc chọn $label.';
+          },
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: isResolvingLocation ? null : onUseCurrentLocation,
+          icon: isResolvingLocation
+              ? const SizedBox.square(
+                  dimension: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.my_location),
+          label: Text(
+            isResolvingLocation ? 'Đang lấy vị trí...' : 'Dùng vị trí hiện tại',
+          ),
+        ),
+        if (currentLocation case final location?)
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.check_circle, color: AppColors.primary),
+            title: const Text('Đang dùng vị trí hiện tại'),
+            subtitle: Text(
+              '${location.latitude.toStringAsFixed(6)}, '
+              '${location.longitude.toStringAsFixed(6)} · '
+              'sai số ±${location.accuracyMeters.ceil()} m\n'
+              'Bạn có thể sửa địa chỉ ở ô phía trên.',
+            ),
+            trailing: IconButton(
+              tooltip: 'Bỏ chọn vị trí hiện tại',
+              onPressed: onClearCurrentLocation,
+              icon: const Icon(Icons.close),
+            ),
+          ),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: onManageAddresses,
+            icon: const Icon(Icons.edit_location_alt_outlined),
+            label: const Text('Quản lý địa chỉ'),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _OrderFormData {
   const _OrderFormData({
     required this.prices,
@@ -935,19 +1391,26 @@ class _CartItemTile extends StatelessWidget {
 }
 
 class _EstimateRow extends StatelessWidget {
-  const _EstimateRow({required this.totalMinorUnits});
+  const _EstimateRow({
+    this.label = 'Tạm tính',
+    required this.totalMinorUnits,
+    this.emphasize = false,
+  });
 
+  final String label;
   final int totalMinorUnits;
+  final bool emphasize;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        const Text('Tạm tính'),
+        Text(label),
         Text(
           '${(totalMinorUnits / 100).toStringAsFixed(0)} đ',
-          style: AppTypography.title.copyWith(color: AppColors.primary),
+          style: (emphasize ? AppTypography.title : AppTypography.bodyText)
+              .copyWith(color: AppColors.primary),
         ),
       ],
     );

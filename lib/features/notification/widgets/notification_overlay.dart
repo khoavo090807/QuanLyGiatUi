@@ -16,6 +16,7 @@ class NotificationOverlay extends StatefulWidget {
 class _NotificationOverlayState extends State<NotificationOverlay> {
   final _service = NotificationService.instance;
   final _notifications = <LaundryNotification>[];
+  final _queuedNotificationIds = <int>{};
   OverlayEntry? _currentEntry;
 
   @override
@@ -25,6 +26,7 @@ class _NotificationOverlayState extends State<NotificationOverlay> {
   }
 
   Future<void> _handleNewNotification(LaundryNotification notification) async {
+    if (!_queuedNotificationIds.add(notification.id)) return;
     await _service.playNotificationSound();
 
     setState(() {
@@ -57,6 +59,7 @@ class _NotificationOverlayState extends State<NotificationOverlay> {
               _currentEntry?.remove();
               _currentEntry = null;
               _notifications.remove(notification);
+              _queuedNotificationIds.remove(notification.id);
 
               if (_notifications.isNotEmpty) {
                 _showNotification(_notifications.first);
