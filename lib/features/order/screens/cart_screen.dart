@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:app_quanly_giaiui/core/navigation/app_routes.dart';
 import 'package:app_quanly_giaiui/core/theme/app_colors.dart';
 import 'package:app_quanly_giaiui/core/theme/app_typography.dart';
+import 'package:app_quanly_giaiui/core/utils/formatter_utils.dart';
 import 'package:app_quanly_giaiui/features/order/data/order_repository.dart';
 import 'package:app_quanly_giaiui/features/order/domain/cart_store.dart';
 import 'package:app_quanly_giaiui/features/order/widgets/measurement_dialog.dart';
@@ -16,17 +17,45 @@ class CartScreen extends StatefulWidget {
 
 class _CartScreenState extends State<CartScreen> {
   final _repository = OrderRepository();
+  final Set<int> _selectedPriceIds = {};
+  final Set<int> _knownPriceIds = {};
   late Future<void> _loadFuture;
+  bool _selectionInitialized = false;
 
   @override
   void initState() {
     super.initState();
+    CartStore.instance.addListener(_onCartChanged);
     _loadFuture = _restoreCart();
+  }
+
+  void _onCartChanged() {
+    final cart = CartStore.instance;
+    if (!cart.isRestored) return;
+    final availableIds = cart.items.map((item) => item.price.priceId).toSet();
+    if (!_selectionInitialized) {
+      _selectedPriceIds.addAll(availableIds);
+      _selectionInitialized = true;
+    } else {
+      _selectedPriceIds.removeWhere((id) => !availableIds.contains(id));
+      _selectedPriceIds.addAll(availableIds.difference(_knownPriceIds));
+    }
+    _knownPriceIds
+      ..clear()
+      ..addAll(availableIds);
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    CartStore.instance.removeListener(_onCartChanged);
+    super.dispose();
   }
 
   Future<void> _restoreCart() async {
     final prices = await _repository.getActivePrices();
     await CartStore.instance.restore(prices);
+    _onCartChanged();
   }
 
   bool _isWeightBased(String symbol) {
@@ -34,17 +63,13 @@ class _CartScreenState extends State<CartScreen> {
     return normalized == 'kg' || normalized == 'kilogram';
   }
 
-  String _formatVnd(num value) => '${value.toStringAsFixed(0)} đ';
+  String _formatVnd(num value) => FormatterUtils.formatVnd(value);
 
   void _adjustMeasurement(int index, double delta) {
     final cart = CartStore.instance;
     final item = cart.items[index];
     final next = item.measurement + delta;
-    if (next <= 0) {
-      cart.removeAt(index);
-    } else {
-      cart.setMeasurement(index, next);
-    }
+    cart.setMeasurement(index, next < 1 ? 1 : next);
   }
 
   Future<void> _editMeasurement(int index) async {
@@ -63,7 +88,7 @@ class _CartScreenState extends State<CartScreen> {
     final measurement = num.tryParse(value.trim().replaceAll(',', '.'));
     if (measurement == null ||
         !measurement.isFinite ||
-        measurement <= 0 ||
+        measurement < 1 ||
         measurement > 99999999.99 ||
         measurement * 100 != (measurement * 100).round()) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -95,6 +120,49 @@ class _CartScreenState extends State<CartScreen> {
       ),
     );
     if (shouldClear == true) CartStore.instance.clear();
+  }
+
+  Future<void> _confirmRemoveSelected() async {
+    final selected = Set<int>.from(_selectedPriceIds);
+    if (selected.isEmpty) return;
+    final shouldRemove = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Xóa dịch vụ đã chọn?'),
+        content: Text('Sẽ xóa ${selected.length} dịch vụ khỏi giỏ hàng.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Giữ lại'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Xóa đã chọn'),
+          ),
+        ],
+      ),
+    );
+    if (shouldRemove == true) CartStore.instance.removePriceIds(selected);
+  }
+
+  void _toggleItem(int priceId, bool? selected) {
+    setState(() {
+      if (selected == true) {
+        _selectedPriceIds.add(priceId);
+      } else {
+        _selectedPriceIds.remove(priceId);
+      }
+    });
+  }
+
+  void _toggleAll(List<int> allIds, bool? selected) {
+    setState(() {
+      if (selected == true) {
+        _selectedPriceIds.addAll(allIds);
+      } else {
+        _selectedPriceIds.removeAll(allIds);
+      }
+    });
   }
 
   @override
@@ -161,6 +229,41 @@ class _CartScreenState extends State<CartScreen> {
                     style: AppTypography.title,
                   ),
                   const SizedBox(height: 12),
+                  Builder(
+                    builder: (context) {
+                      final allIds = cart.items
+                          .map((item) => item.price.priceId)
+                          .toList(growable: false);
+                      final selectedCount = allIds
+                          .where(_selectedPriceIds.contains)
+                          .length;
+                      final allSelected = selectedCount == allIds.length;
+                      final noneSelected = selectedCount == 0;
+                      return Row(
+                        children: [
+                          Checkbox(
+                            tristate: true,
+                            value: allSelected
+                                ? true
+                                : noneSelected
+                                ? false
+                                : null,
+                            onChanged: (_) =>
+                                _toggleAll(allIds, !allSelected),
+                          ),
+                          Expanded(
+                            child: Text('Chọn tất cả ($selectedCount/${allIds.length})'),
+                          ),
+                          TextButton(
+                            onPressed: selectedCount == 0
+                                ? null
+                                : _confirmRemoveSelected,
+                            child: const Text('Xóa đã chọn'),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
                   ...cart.items.indexed.map((entry) {
                     final index = entry.$1;
                     final item = entry.$2;
@@ -176,6 +279,16 @@ class _CartScreenState extends State<CartScreen> {
                             Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
+                                Checkbox(
+                                  value: _selectedPriceIds.contains(
+                                    item.price.priceId,
+                                  ),
+                                  onChanged: (value) => _toggleItem(
+                                    item.price.priceId,
+                                    value,
+                                  ),
+                                  visualDensity: VisualDensity.compact,
+                                ),
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment:
@@ -217,8 +330,10 @@ class _CartScreenState extends State<CartScreen> {
                               children: [
                                 IconButton.outlined(
                                   tooltip: 'Giảm',
-                                  onPressed: () =>
-                                      _adjustMeasurement(index, -step),
+                                  onPressed: item.measurement <= 1
+                                      ? null
+                                      : () =>
+                                            _adjustMeasurement(index, -step),
                                   icon: const Icon(Icons.remove),
                                 ),
                                 Padding(
@@ -277,6 +392,14 @@ class _CartScreenState extends State<CartScreen> {
           if (!cart.isRestored || cart.items.isEmpty) {
             return const SizedBox.shrink();
           }
+          final selectedItems = cart.items
+              .where((item) =>
+                  _selectedPriceIds.contains(item.price.priceId))
+              .toList(growable: false);
+          final selectedSubtotal = selectedItems.fold<int>(
+            0,
+            (total, item) => total + item.estimatedTotalMinorUnits,
+          );
           return Container(
             padding: const EdgeInsets.fromLTRB(20, 14, 20, 16),
             decoration: BoxDecoration(
@@ -289,9 +412,11 @@ class _CartScreenState extends State<CartScreen> {
                 children: [
                   Row(
                     children: [
-                      const Expanded(child: Text('Tạm tính')),
+                      Expanded(
+                        child: Text('Tạm tính (${selectedItems.length} mục chọn)'),
+                      ),
                       Text(
-                        _formatVnd(cart.subtotalMinorUnits / 100),
+                        _formatVnd(selectedSubtotal / 100),
                         style: AppTypography.title,
                       ),
                     ],
@@ -300,11 +425,17 @@ class _CartScreenState extends State<CartScreen> {
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton(
-                      onPressed: () =>
-                          context.pushNamed(
-                            AppRoutes.createOrder,
-                            extra: 'cart',
-                          ),
+                      onPressed: selectedItems.isEmpty
+                          ? null
+                          : () => context.pushNamed(
+                              AppRoutes.createOrder,
+                              extra: {
+                                'checkoutCart': true,
+                                'selectedPriceIds': selectedItems
+                                    .map((item) => item.price.priceId)
+                                    .toList(growable: false),
+                              },
+                            ),
                       child: const Text('Tiếp tục đặt đơn'),
                     ),
                   ),

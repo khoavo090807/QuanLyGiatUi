@@ -44,6 +44,8 @@ class LaundryPriceOption {
     required this.unitName,
     required this.unitSymbol,
     required this.unitPriceVnd,
+    this.serviceTypeId,
+    this.serviceTypeName,
   });
 
   final int priceId;
@@ -57,6 +59,24 @@ class LaundryPriceOption {
   final String unitName;
   final String unitSymbol;
   final num unitPriceVnd;
+  final int? serviceTypeId;
+  final String? serviceTypeName;
+
+  LaundryPriceOption withServiceTypeName(String? value) => LaundryPriceOption(
+    priceId: priceId,
+    serviceId: serviceId,
+    serviceName: serviceName,
+    serviceDescription: serviceDescription,
+    processingTimeMinutes: processingTimeMinutes,
+    itemTypeId: itemTypeId,
+    itemTypeName: itemTypeName,
+    unitId: unitId,
+    unitName: unitName,
+    unitSymbol: unitSymbol,
+    unitPriceVnd: unitPriceVnd,
+    serviceTypeId: serviceTypeId,
+    serviceTypeName: value,
+  );
 
   factory LaundryPriceOption.fromJson(Map<String, dynamic> json) {
     return LaundryPriceOption(
@@ -71,8 +91,36 @@ class LaundryPriceOption {
       unitName: json['tendonvitinh'] as String,
       unitSymbol: json['kyhieu'] as String? ?? '',
       unitPriceVnd: json['dongia'] as num,
+      serviceTypeId: (json['loaidichvuid'] as num?)?.toInt(),
+      serviceTypeName: json['tenloaidichvu'] as String?,
     );
   }
+}
+
+class LaundryItemTypeOption {
+  const LaundryItemTypeOption({
+    required this.id,
+    required this.name,
+    this.description,
+  });
+
+  final int id;
+  final String name;
+  final String? description;
+
+  factory LaundryItemTypeOption.fromJson(Map<String, dynamic> json) =>
+      LaundryItemTypeOption(
+        id: (json['loaidogiatid'] as num).toInt(),
+        name: json['tenloaidogiat'] as String,
+        description: json['mota'] as String?,
+      );
+}
+
+class LaundryCatalogData {
+  const LaundryCatalogData({required this.itemTypes, required this.prices});
+
+  final List<LaundryItemTypeOption> itemTypes;
+  final List<LaundryPriceOption> prices;
 }
 
 class CreatedLaundryBooking {
@@ -505,7 +553,7 @@ class OrderRepository {
         .from('banggia')
         .select(
           'banggiaid,dichvuid,loaidogiatid,donvitinhid,dongia,'
-          'dichvu!inner(tendichvu,trangthai,mota,thoigiandukien),'
+          'dichvu!inner(tendichvu,loaidichvuid,trangthai,mota,thoigiandukien),'
           'loaidogiat!inner(tenloaidogiat,trangthai),'
           'donvitinh!inner(tendonvitinh,kyhieu,trangthai)',
         )
@@ -524,12 +572,51 @@ class OrderRepository {
             'tendichvu': service['tendichvu'],
             'mota': service['mota'],
             'thoigiandukien': service['thoigiandukien'],
+            'loaidichvuid': service['loaidichvuid'],
             'tenloaidogiat': itemType['tenloaidogiat'],
             'tendonvitinh': unit['tendonvitinh'],
             'kyhieu': unit['kyhieu'],
           });
         })
         .toList(growable: false);
+  }
+
+  Future<LaundryCatalogData> getActiveLaundryCatalog() async {
+    final pricesFuture = getActivePrices();
+    final itemTypesFuture = _client
+        .from('loaidogiat')
+        .select('loaidogiatid,tenloaidogiat,mota')
+        .eq('trangthai', 'Hoạt động')
+        .order('tenloaidogiat');
+    final serviceTypesFuture = _client
+        .from('loaidichvu')
+        .select('loaidichvuid,tenloaidichvu')
+        .eq('trangthai', 'Hoạt động');
+
+    final prices = await pricesFuture;
+    final itemTypeRows = await itemTypesFuture as List<dynamic>;
+    final serviceTypeRows = await serviceTypesFuture as List<dynamic>;
+    final serviceTypeNames = <int, String>{
+      for (final row in serviceTypeRows.cast<Map<String, dynamic>>())
+        (row['loaidichvuid'] as num).toInt():
+            row['tenloaidichvu'] as String,
+    };
+
+    return LaundryCatalogData(
+      itemTypes: itemTypeRows
+          .cast<Map<String, dynamic>>()
+          .map(LaundryItemTypeOption.fromJson)
+          .toList(growable: false),
+      prices: prices
+          .map(
+            (price) => price.withServiceTypeName(
+              price.serviceTypeId == null
+                  ? null
+                  : serviceTypeNames[price.serviceTypeId],
+            ),
+          )
+          .toList(growable: false),
+    );
   }
 
   Future<List<LaundryOrderRecord>> getCustomerOrders({bool includeDetails = false}) async {

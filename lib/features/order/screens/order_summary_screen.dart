@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:app_quanly_giaiui/core/theme/app_colors.dart';
 import 'package:app_quanly_giaiui/core/theme/app_typography.dart';
+import 'package:app_quanly_giaiui/core/utils/formatter_utils.dart';
 import 'package:app_quanly_giaiui/features/order/data/order_repository.dart';
 import 'package:app_quanly_giaiui/features/order/domain/cart_item.dart';
 import 'package:app_quanly_giaiui/features/order/domain/cart_store.dart';
@@ -30,6 +31,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       widget.draft['provideLaundryDetails'] as bool? ?? true;
   bool get _clearCartAfterSubmit =>
       widget.draft['clearCartAfterSubmit'] as bool? ?? false;
+  Set<int>? get _clearCartPriceIds {
+    final ids = widget.draft['clearCartPriceIds'];
+    return ids is List ? ids.whereType<int>().toSet() : null;
+  }
   String get _paymentMethod =>
       widget.draft['paymentMethod'] as String? ?? 'Tiền mặt';
   String get _pickupMethod => widget.draft['pickupMethod'] as String;
@@ -122,7 +127,14 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
               idempotencyKey: _idempotencyKey,
               promotionCode: _promotionCode,
             );
-      if (_clearCartAfterSubmit) CartStore.instance.clear();
+      if (_clearCartAfterSubmit) {
+        final selectedIds = _clearCartPriceIds;
+        if (selectedIds == null) {
+          CartStore.instance.clear();
+        } else {
+          CartStore.instance.removePriceIds(selectedIds);
+        }
+      }
       if (mounted) setState(() => _createdBooking = booking);
     } catch (error) {
       if (mounted) setState(() => _errorMessage = _messageFor(error));
@@ -145,7 +157,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         '${local.minute.toString().padLeft(2, '0')}';
   }
 
-  String _formatVnd(num value) => '${value.toStringAsFixed(0)} đ';
+  String _formatVnd(num value) => FormatterUtils.formatVnd(value);
 
   @override
   Widget build(BuildContext context) {

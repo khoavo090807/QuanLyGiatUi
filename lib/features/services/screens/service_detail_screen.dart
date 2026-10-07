@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:app_quanly_giaiui/core/navigation/app_routes.dart';
 import 'package:app_quanly_giaiui/core/theme/app_colors.dart';
 import 'package:app_quanly_giaiui/core/theme/app_typography.dart';
+import 'package:app_quanly_giaiui/core/utils/formatter_utils.dart';
 import 'package:app_quanly_giaiui/features/order/data/order_repository.dart';
 import 'package:app_quanly_giaiui/features/order/domain/cart_item.dart';
 import 'package:app_quanly_giaiui/features/order/domain/cart_store.dart';
@@ -243,7 +244,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                               Padding(
                                 padding: const EdgeInsets.all(12),
                                 child: Text(
-                                  '${price.unitPriceVnd.toStringAsFixed(0)} đ / ${price.unitSymbol}',
+                                  '${FormatterUtils.formatVnd(price.unitPriceVnd)} / ${price.unitSymbol}',
                                   style: AppTypography.bodyText,
                                 ),
                               ),

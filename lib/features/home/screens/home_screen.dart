@@ -129,7 +129,9 @@ class HomeScreenState extends State<HomeScreen> {
                       const SizedBox(height: 16),
                     ],
                     _buildActiveOrderCard(context, data.orders),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 16),
+                    _buildLaundryCatalogShortcut(context),
+                    const SizedBox(height: 16),
                     SectionHeader(
                       title: AppStrings.services,
                       actionText: AppStrings.seeAll,
@@ -184,6 +186,11 @@ class HomeScreenState extends State<HomeScreen> {
             ),
           ),
           const CartIconButton(),
+          IconButton(
+            tooltip: 'Tin nhắn với cửa hàng',
+            onPressed: () => context.push(AppRoutes.messagesPath),
+            icon: const Icon(Icons.chat_bubble_outline),
+          ),
           ValueListenableBuilder<int>(
             valueListenable: widget.unreadNotificationCount,
             builder: (context, unreadCount, child) => IconButton(
@@ -339,6 +346,45 @@ class HomeScreenState extends State<HomeScreen> {
         onPressed: () => context.pushNamed(AppRoutes.staffQueue),
         icon: const Icon(Icons.fact_check_outlined),
         label: const Text('Mở hàng đợi nhân viên'),
+      ),
+    );
+  }
+
+  Widget _buildLaundryCatalogShortcut(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Card(
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () => context.pushNamed(AppRoutes.laundryCatalog),
+          child: const Padding(
+            padding: EdgeInsets.all(16),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: AppColors.primaryLight,
+                  foregroundColor: AppColors.primary,
+                  child: Icon(Icons.category_outlined),
+                ),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Dịch vụ theo loại đồ', style: AppTypography.title),
+                      SizedBox(height: 3),
+                      Text(
+                        'Xem loại đồ và các dịch vụ phù hợp',
+                        style: AppTypography.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(Icons.chevron_right, color: AppColors.textSecondary),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -14,6 +14,8 @@ import 'package:app_quanly_giaiui/features/auth/screens/forgot_password_screen.d
 import 'package:app_quanly_giaiui/features/auth/screens/reset_password_screen.dart';
 import 'package:app_quanly_giaiui/features/main_shell.dart';
 import 'package:app_quanly_giaiui/features/services/screens/service_detail_screen.dart';
+import 'package:app_quanly_giaiui/features/services/screens/laundry_catalog_screen.dart';
+import 'package:app_quanly_giaiui/features/services/screens/laundry_item_type_detail_screen.dart';
 import 'package:app_quanly_giaiui/features/order/screens/create_order_screen.dart';
 import 'package:app_quanly_giaiui/features/order/screens/order_summary_screen.dart';
 import 'package:app_quanly_giaiui/features/order/screens/cart_screen.dart';
@@ -27,6 +29,9 @@ import 'package:app_quanly_giaiui/features/profile/screens/edit_profile_screen.d
 import 'package:app_quanly_giaiui/features/profile/screens/change_password_screen.dart';
 import 'package:app_quanly_giaiui/features/auth/screens/initial_password_setup_screen.dart';
 import 'package:app_quanly_giaiui/features/review/screens/review_screen.dart';
+import 'package:app_quanly_giaiui/features/messaging/screens/message_inbox_screen.dart';
+import 'package:app_quanly_giaiui/features/messaging/screens/chat_screen.dart';
+import 'package:app_quanly_giaiui/features/messaging/data/message_repository.dart';
 import 'app_routes.dart';
 
 class AppRouter {
@@ -39,8 +44,8 @@ class AppRouter {
   }
 
   static bool _isStaffAccount(List<String> roles) =>
-      roles.map((role) => role.trim()).any(
-        {'Nhân viên', 'Quản lý', 'Chủ cửa hàng'}.contains,
+      roles.map((role) => role.trim()).any((role) =>
+        role == 'Nhân viên' || role == 'Chủ cửa hàng' || role.startsWith('Quản lý'),
       );
 
   static Future<List<String>> _loadCurrentRoles() async {
@@ -71,8 +76,7 @@ class AppRouter {
             _cachedRoles = null;
             final roles = await _loadCurrentRoles();
             if (_isStaffAccount(roles)) {
-              await repository.signOut();
-              return AppRoutes.loginPath;
+              return AppRoutes.staffQueuePath;
             }
             return defaultRouteForRoles(roles);
           },
@@ -165,6 +169,36 @@ class AppRouter {
         builder: (context, state) => const CartScreen(),
       ),
       GoRoute(
+        path: AppRoutes.messagesPath,
+        name: AppRoutes.messages,
+        builder: (context, state) => MessageInboxScreen(
+          initialOrderId: state.extra is int ? state.extra as int : null,
+        ),
+        routes: [
+          GoRoute(
+            path: 'chat',
+            name: AppRoutes.chat,
+            builder: (context, state) {
+              final extra = state.extra;
+              if (extra is! ChatThread) return const MessageInboxScreen();
+              return ChatScreen(thread: extra);
+            },
+          ),
+        ],
+      ),
+      GoRoute(
+        path: AppRoutes.laundryCatalogPath,
+        name: AppRoutes.laundryCatalog,
+        builder: (context, state) => const LaundryCatalogScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.laundryItemTypeDetailPath,
+        name: AppRoutes.laundryItemTypeDetail,
+        builder: (context, state) => LaundryItemTypeDetailScreen(
+          itemTypeId: state.pathParameters['id'] ?? '',
+        ),
+      ),
+      GoRoute(
         path: AppRoutes.changePasswordPath,
         name: AppRoutes.changePassword,
         builder: (context, state) => const ChangePasswordScreen(),
@@ -182,10 +216,22 @@ class AppRouter {
       GoRoute(
         path: '/create-order',
         name: AppRoutes.createOrder,
-        builder: (context, state) => CreateOrderScreen(
-          initialPriceId: state.extra is int ? state.extra as int : null,
-          checkoutCart: state.extra == 'cart',
-        ),
+        builder: (context, state) {
+          final extra = state.extra;
+          if (extra is Map && extra['checkoutCart'] == true) {
+            final ids = extra['selectedPriceIds'];
+            return CreateOrderScreen(
+              checkoutCart: true,
+              selectedCartPriceIds: ids is List
+                  ? ids.whereType<int>().toSet()
+                  : null,
+            );
+          }
+          return CreateOrderScreen(
+            initialPriceId: extra is int ? extra : null,
+            checkoutCart: extra == 'cart',
+          );
+        },
         routes: [
           GoRoute(
             path: 'summary',
@@ -308,10 +354,21 @@ class AppRouter {
     if (isSignedIn && path != AppRoutes.splashPath) {
       final roles = await _loadCurrentRoles();
       if (_isStaffAccount(roles)) {
-        await Supabase.instance.client.auth.signOut();
-        return AppRoutes.loginPath;
+        if (path == AppRoutes.staffQueuePath ||
+            path == AppRoutes.messagesPath ||
+            path.startsWith('${AppRoutes.messagesPath}/')) {
+          return null;
+        }
+        if (path == AppRoutes.homePath ||
+            path == AppRoutes.myOrdersPath ||
+            path == AppRoutes.notificationsPath ||
+            path == AppRoutes.profilePath) {
+          return AppRoutes.staffQueuePath;
+        }
       }
-      if (path == AppRoutes.staffQueuePath) return AppRoutes.homePath;
+      if (path == AppRoutes.staffQueuePath && !_isStaffAccount(roles)) {
+        return AppRoutes.homePath;
+      }
     }
 
     if (isSignedIn &&

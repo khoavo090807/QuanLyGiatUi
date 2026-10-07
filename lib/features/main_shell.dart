@@ -76,8 +76,9 @@ class _MainShellState extends State<MainShell> {
     super.dispose();
   }
 
-  bool _hasStaffRole(List<String> roles) =>
-      roles.any({'Nhân viên', 'Quản lý', 'Chủ cửa hàng'}.contains);
+  bool _hasStaffRole(List<String> roles) => roles.any(
+    (role) => role == 'Nhân viên' || role == 'Chủ cửa hàng' || role.startsWith('Quản lý'),
+  );
 
   void _onDestinationSelected(int index, bool isStaff) {
     setState(() => _selectedIndex = index);

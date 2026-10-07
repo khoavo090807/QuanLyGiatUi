@@ -5,8 +5,13 @@ class FormatterUtils {
 
   /// Format money (e.g., 100000 -> "100.000 đ")
   static String formatCurrency(double amount) {
-    final formatter = NumberFormat.currency(locale: 'vi_VN', symbol: 'đ');
-    return formatter.format(amount);
+    return formatVnd(amount);
+  }
+
+  /// Format whole Vietnamese đồng with dot group separators (e.g. 100000 -> 100.000 đ).
+  static String formatVnd(num amount) {
+    final formatter = NumberFormat('#,##0', 'vi_VN');
+    return '${formatter.format(amount.round())} đ';
   }
 
   /// Format date (e.g., DateTime -> "19/09/2026")

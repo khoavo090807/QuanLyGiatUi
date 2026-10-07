@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:app_quanly_giaiui/core/constants/app_strings.dart';
 import 'package:app_quanly_giaiui/core/theme/app_colors.dart';
+import 'package:app_quanly_giaiui/core/utils/formatter_utils.dart';
 import 'package:app_quanly_giaiui/core/theme/app_typography.dart';
 import 'package:app_quanly_giaiui/features/order/data/order_repository.dart';
 import 'package:app_quanly_giaiui/features/payment/data/payment_repository.dart';
@@ -124,7 +125,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                       const Text('Tổng thanh toán'),
                       const SizedBox(height: 8),
                       Text(
-                        '${invoice.total.toStringAsFixed(0)} đ',
+                        FormatterUtils.formatVnd(invoice.total),
                         style: AppTypography.heading1.copyWith(
                           color: AppColors.primary,
                         ),

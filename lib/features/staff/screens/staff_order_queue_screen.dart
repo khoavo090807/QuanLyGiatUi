@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'package:app_quanly_giaiui/core/navigation/app_routes.dart';
 import 'package:app_quanly_giaiui/core/theme/app_colors.dart';
 import 'package:app_quanly_giaiui/core/theme/app_typography.dart';
+import 'package:app_quanly_giaiui/core/utils/formatter_utils.dart';
 import 'package:app_quanly_giaiui/features/auth/data/auth_repository.dart';
 import 'package:app_quanly_giaiui/features/order/data/order_repository.dart';
 import 'package:app_quanly_giaiui/features/order/widgets/order_confirmation_info.dart';
@@ -124,6 +127,11 @@ class _StaffOrderQueueScreenState extends State<StaffOrderQueueScreen> {
         title: const Text('Yêu cầu và đơn hàng'),
         actions: [
           IconButton(
+            tooltip: 'Tin nhắn khách hàng',
+            onPressed: () => context.push(AppRoutes.messagesPath),
+            icon: const Icon(Icons.chat_bubble_outline),
+          ),
+          IconButton(
             tooltip: 'Làm mới',
             onPressed: _refresh,
             icon: const Icon(Icons.refresh),
@@ -147,9 +155,8 @@ class _StaffOrderQueueScreenState extends State<StaffOrderQueueScreen> {
           }
 
           final queue = snapshot.data!;
-          if (!queue.roles.any(
-            {'Nhân viên', 'Quản lý', 'Chủ cửa hàng'}.contains,
-          )) {
+          if (!queue.roles.any((role) =>
+              role == 'Nhân viên' || role == 'Chủ cửa hàng' || role.startsWith('Quản lý'))) {
             return const _QueueState(
               icon: Icons.lock_outline,
               message: 'Tài khoản không có quyền vận hành đơn hàng.',
@@ -242,7 +249,7 @@ class _StaffOrderCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            '${order.totalVnd.toStringAsFixed(0)} đ',
+            FormatterUtils.formatVnd(order.totalVnd),
             style: AppTypography.title.copyWith(color: AppColors.primary),
           ),
           if (actions.isNotEmpty) ...[

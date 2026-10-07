@@ -94,13 +94,14 @@ class CartStore extends ChangeNotifier {
             final existingIndex = _items.indexWhere(
               (item) => item.price.priceId == priceId,
             );
+            final safeMeasurement = measurement < 1 ? 1 : measurement;
             if (existingIndex == -1) {
-              _items.add(CartItem(price: price, measurement: measurement));
+              _items.add(CartItem(price: price, measurement: safeMeasurement));
             } else {
               final existing = _items[existingIndex];
               _items[existingIndex] = CartItem(
                 price: price,
-                measurement: existing.measurement + measurement,
+                measurement: existing.measurement + safeMeasurement,
               );
             }
           }
@@ -119,23 +120,24 @@ class CartStore extends ChangeNotifier {
 
   void add(CartItem item) {
     assert(_isRestored, 'Restore the cart before changing it.');
+    final measurement = item.measurement < 1 ? 1 : item.measurement;
     final index = _items.indexWhere(
       (existing) => existing.price.priceId == item.price.priceId,
     );
     if (index == -1) {
-      _items.add(item);
+      _items.add(CartItem(price: item.price, measurement: measurement));
     } else {
       final existing = _items[index];
       _items[index] = CartItem(
         price: item.price,
-        measurement: existing.measurement + item.measurement,
+        measurement: existing.measurement + measurement,
       );
     }
     _changed();
   }
 
   void setMeasurement(int index, num measurement) {
-    if (index < 0 || index >= _items.length || measurement <= 0) return;
+    if (index < 0 || index >= _items.length || measurement < 1) return;
     final item = _items[index];
     _items[index] = CartItem(price: item.price, measurement: measurement);
     _changed();
@@ -143,14 +145,21 @@ class CartStore extends ChangeNotifier {
 
   void removeAt(int index) {
     if (index < 0 || index >= _items.length) return;
-    final removed = _items.removeAt(index);
-    _priceChangedPriceIds.remove(removed.price.priceId);
+    removePriceIds({_items[index].price.priceId});
+  }
+
+  void removePriceIds(Set<int> priceIds) {
+    if (priceIds.isEmpty) return;
+    _items.removeWhere((item) => priceIds.contains(item.price.priceId));
+    _priceChangedPriceIds.removeAll(priceIds);
     if (_items.isEmpty) {
       _unavailableItems = 0;
       _priceChangedPriceIds.clear();
     }
     _changed();
   }
+
+  void clearSelectedPriceIds(Set<int> priceIds) => removePriceIds(priceIds);
 
   void clear() {
     if (_items.isEmpty &&

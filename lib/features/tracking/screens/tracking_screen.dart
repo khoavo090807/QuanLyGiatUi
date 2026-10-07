@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:app_quanly_giaiui/core/navigation/app_routes.dart';
 import 'package:app_quanly_giaiui/core/theme/app_colors.dart';
 import 'package:app_quanly_giaiui/core/theme/app_typography.dart';
+import 'package:app_quanly_giaiui/core/utils/formatter_utils.dart';
 import 'package:app_quanly_giaiui/features/order/data/order_repository.dart';
 
 class TrackingScreen extends StatefulWidget {
@@ -50,7 +51,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
         '${local.minute.toString().padLeft(2, '0')}';
   }
 
-  String _formatVnd(num value) => '${value.toStringAsFixed(0)} đ';
+  String _formatVnd(num value) => FormatterUtils.formatVnd(value);
 
   String _formatDistance(num meters) =>
       '${(meters / 1000).toStringAsFixed(1)} km';
@@ -64,6 +65,18 @@ class _TrackingScreenState extends State<TrackingScreen> {
               ? 'Chi tiết đơn hàng #${widget.orderId}'
               : 'Chi tiết yêu cầu #${widget.bookingId}',
         ),
+        actions: widget.orderId == null
+            ? null
+            : [
+                IconButton(
+                  tooltip: 'Nhắn tin về đơn hàng',
+                  onPressed: () => context.push(
+                    AppRoutes.messagesPath,
+                    extra: int.tryParse(widget.orderId!),
+                  ),
+                  icon: const Icon(Icons.chat_bubble_outline),
+                ),
+              ],
       ),
       body: FutureBuilder<LaundryOrderDetails>(
         future: _detailsFuture,

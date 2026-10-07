@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:app_quanly_giaiui/core/constants/app_strings.dart';
 import 'package:app_quanly_giaiui/core/theme/app_colors.dart';
+import 'package:app_quanly_giaiui/core/utils/formatter_utils.dart';
 import 'package:app_quanly_giaiui/core/theme/app_typography.dart';
 import 'package:app_quanly_giaiui/features/loyalty/data/loyalty_repository.dart';
 
@@ -157,10 +158,10 @@ class _VouchersScreenState extends State<VouchersScreen> {
     final isPercent = voucher.discountType == 'Phần trăm';
     final discount = isPercent
         ? '${voucher.discountValue.toStringAsFixed(0)}%'
-        : '${voucher.discountValue.toStringAsFixed(0)} đ';
+        : FormatterUtils.formatVnd(voucher.discountValue);
     final condition = voucher.minimumOrder == null
         ? voucher.condition ?? ''
-        : '${voucher.condition ?? ''} Từ ${voucher.minimumOrder!.toStringAsFixed(0)} đ';
+        : '${voucher.condition ?? ''} Từ ${FormatterUtils.formatVnd(voucher.minimumOrder!)}';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),

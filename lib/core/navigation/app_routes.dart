@@ -20,6 +20,8 @@ class AppRoutes {
 
   // Order Flow
   static const String serviceDetail = 'service-detail';
+  static const String laundryCatalog = 'laundry-catalog';
+  static const String laundryItemTypeDetail = 'laundry-item-type-detail';
   static const String createOrder = 'create-order';
   static const String orderSummary = 'order-summary';
   
@@ -35,6 +37,8 @@ class AppRoutes {
   static const String changePassword = 'change-password';
   static const String initialPasswordSetup = 'initial-password-setup';
   static const String cart = 'cart';
+  static const String messages = 'messages';
+  static const String chat = 'chat';
   
   // Pre-defined paths
   static const String splashPath = '/';
@@ -52,6 +56,8 @@ class AppRoutes {
   static const String profilePath = '/profile';
   
   static const String serviceDetailPath = 'service-detail/:id'; // Relative to home
+  static const String laundryCatalogPath = '/laundry-catalog';
+  static const String laundryItemTypeDetailPath = '/laundry-item-type/:id';
   static const String createOrderPath = 'create-order'; // Relative to home
   static const String orderSummaryPath = 'order-summary'; // Relative to create order
   
@@ -64,4 +70,6 @@ class AppRoutes {
   static const String changePasswordPath = '/profile/change-password';
   static const String initialPasswordSetupPath = '/setup-password';
   static const String cartPath = '/cart';
+  static const String messagesPath = '/messages';
+  static const String chatPath = '/messages/chat';
 }

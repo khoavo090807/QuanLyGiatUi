@@ -287,7 +287,10 @@ class _OrderCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  Flexible(child: statusBadge),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: statusBadge,
+                  ),
                 ],
               ),
               const SizedBox(height: 8),
@@ -308,7 +311,7 @@ class _OrderCard extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    FormatterUtils.formatCurrency(
+                    FormatterUtils.formatVnd(
                       (order.finalTotalVnd ?? order.totalVnd).toDouble(),
                     ),
                     style: AppTypography.title.copyWith(

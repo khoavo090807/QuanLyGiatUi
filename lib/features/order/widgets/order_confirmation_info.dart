@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:app_quanly_giaiui/core/theme/app_colors.dart';
 import 'package:app_quanly_giaiui/core/theme/app_typography.dart';
+import 'package:app_quanly_giaiui/core/utils/formatter_utils.dart';
 import 'package:app_quanly_giaiui/features/order/data/order_repository.dart';
 
 class OrderConfirmationInfo extends StatelessWidget {
@@ -194,7 +195,7 @@ class OrderConfirmationInfo extends StatelessWidget {
   Color get _secondaryColor =>
       lightText ? Colors.white.withValues(alpha: 0.82) : AppColors.textSecondary;
 
-  String _formatVnd(num value) => '${value.toStringAsFixed(0)} đ';
+  String _formatVnd(num value) => FormatterUtils.formatVnd(value);
 
   String _formatDateTime(DateTime value) {
     final local = value.toLocal();
