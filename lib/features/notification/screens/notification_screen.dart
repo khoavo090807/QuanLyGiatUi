@@ -1,10 +1,13 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:app_quanly_giaiui/core/constants/app_strings.dart';
 import 'package:app_quanly_giaiui/core/navigation/app_routes.dart';
 import 'package:app_quanly_giaiui/core/theme/app_colors.dart';
 import 'package:app_quanly_giaiui/core/theme/app_typography.dart';
 import 'package:app_quanly_giaiui/features/notification/data/notification_repository.dart';
+import 'package:app_quanly_giaiui/features/messaging/data/message_repository.dart';
 
 class NotificationScreen extends StatefulWidget {
   const NotificationScreen({required this.unreadNotificationCount, super.key});
@@ -21,11 +24,18 @@ class _NotificationScreenState extends State<NotificationScreen> {
   final Set<int> _selectedNotificationIds = {};
   List<int> _loadedNotificationIds = [];
   bool _isBusy = false;
+  RealtimeChannel? _realtimeChannel;
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
     _notificationsFuture = _loadNotifications();
+    _realtimeChannel = Supabase.instance.client
+        .channel('notification-list:${Supabase.instance.client.auth.currentUser?.id ?? 'anonymous'}')
+        .onPostgresChanges(event: PostgresChangeEvent.all, schema: 'public', table: 'ThongBao', callback: (_) => _refresh())
+        .subscribe();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) => _refresh());
   }
 
   Future<List<LaundryNotification>> _loadNotifications() async {
@@ -84,6 +94,56 @@ class _NotificationScreenState extends State<NotificationScreen> {
     }
   }
 
+  Future<void> _markSelectedUnread() async {
+    if (_selectedNotificationIds.isEmpty) return;
+    await _runBulk(() => _repository.markManyUnread(_selectedNotificationIds));
+  }
+
+  Future<void> _deleteSelected() async {
+    if (_selectedNotificationIds.isEmpty) return;
+    final confirmed = await _confirmDelete(_selectedNotificationIds.length);
+    if (!confirmed || !mounted) return;
+    await _runBulk(() => _repository.deleteMany(_selectedNotificationIds));
+  }
+
+  Future<void> _runBulk(Future<void> Function() action) async {
+    setState(() => _isBusy = true);
+    try {
+      await action();
+      _selectedNotificationIds.clear();
+      await _refresh();
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Không thể cập nhật thông báo.')));
+    } finally {
+      if (mounted) setState(() => _isBusy = false);
+    }
+  }
+
+  Future<bool> _confirmDelete(int count) async => await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Xóa thông báo?'),
+      content: Text(count == 1 ? 'Thông báo này sẽ bị xóa.' : 'Xóa $count thông báo đã chọn?'),
+      actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Hủy')), FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Xóa'))],
+    ),
+  ) ?? false;
+
+  Future<void> _handleNotificationAction(LaundryNotification notification, String action) async {
+    try {
+      if (action == 'delete') {
+        if (!await _confirmDelete(1) || !mounted) return;
+        await _repository.deleteNotification(notification.id);
+      } else if (action == 'unread') {
+        await _repository.markUnread(notification.id);
+      } else {
+        await _repository.markRead(notification.id);
+      }
+      await _refresh();
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Không thể cập nhật thông báo.')));
+    }
+  }
+
   void _toggleSelection(int notificationId, bool? selected) {
     setState(() {
       if (selected ?? false) {
@@ -120,12 +180,51 @@ class _NotificationScreenState extends State<NotificationScreen> {
       }
     }
 
-    if (mounted && notification.orderId != null) {
+    if (mounted && notification.messageId != null) {
+      try {
+        final thread = await MessageRepository().getThreadForMessage(notification.messageId!);
+        if (mounted) context.pushNamed(AppRoutes.chat, extra: thread);
+      } catch (_) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Không mở được cuộc trò chuyện.')));
+      }
+    } else if (mounted && notification.orderId != null) {
       context.pushNamed(
         AppRoutes.trackingDetail,
         pathParameters: {'id': notification.orderId.toString()},
       );
+    } else if (mounted && _isOrderOrBookingNotification(notification)) {
+      try {
+        final bookingId = await _repository.findBookingId(
+          notification.message,
+          bookingId: notification.bookingId,
+        );
+        if (!mounted) return;
+        if (bookingId != null) {
+          context.pushNamed(
+            AppRoutes.trackingDetail,
+            pathParameters: {'id': 'booking_$bookingId'},
+          );
+        } else {
+          context.pushNamed(AppRoutes.myOrders);
+        }
+      } catch (_) {
+        if (mounted) context.pushNamed(AppRoutes.myOrders);
+      }
     }
+  }
+
+  bool _isOrderOrBookingNotification(LaundryNotification notification) {
+    final type = (notification.type ?? '').toLowerCase();
+    return type.contains('booking') || type.contains('order') ||
+        RegExp(r'\bBK-').hasMatch(notification.message);
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    final channel = _realtimeChannel;
+    if (channel != null) Supabase.instance.client.removeChannel(channel);
+    super.dispose();
   }
 
   String _timeLabel(DateTime value) {
@@ -167,6 +266,16 @@ class _NotificationScreenState extends State<NotificationScreen> {
                 ? null
                 : _markSelectedRead,
             icon: const Icon(Icons.mark_email_read_outlined),
+          ),
+          IconButton(
+            tooltip: 'Đánh dấu chưa đọc',
+            onPressed: _isBusy || _selectedNotificationIds.isEmpty ? null : _markSelectedUnread,
+            icon: const Icon(Icons.mark_email_unread_outlined),
+          ),
+          IconButton(
+            tooltip: 'Xóa thông báo đã chọn',
+            onPressed: _isBusy || _selectedNotificationIds.isEmpty ? null : _deleteSelected,
+            icon: const Icon(Icons.delete_outline),
           ),
           IconButton(
             tooltip: 'Đánh dấu tất cả đã đọc',
@@ -246,13 +355,20 @@ class _NotificationScreenState extends State<NotificationScreen> {
                     foregroundColor: Colors.white,
                     child: Icon(_iconFor(notification.type)),
                   ),
-                  trailing: Checkbox(
-                    value: isSelected,
-                    onChanged: _isBusy
-                        ? null
-                        : (selected) =>
-                              _toggleSelection(notification.id, selected),
-                  ),
+                  trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                    PopupMenuButton<String>(
+                      enabled: !_isBusy,
+                      onSelected: (action) => _handleNotificationAction(notification, action),
+                      itemBuilder: (_) => [
+                        PopupMenuItem(value: notification.isRead ? 'unread' : 'read', child: Text(notification.isRead ? 'Đánh dấu chưa đọc' : 'Đánh dấu đã đọc')),
+                        const PopupMenuItem(value: 'delete', child: Text('Xóa thông báo')),
+                      ],
+                    ),
+                    Checkbox(
+                      value: isSelected,
+                      onChanged: _isBusy ? null : (selected) => _toggleSelection(notification.id, selected),
+                    ),
+                  ]),
                   title: Text(
                     notification.title,
                     style: AppTypography.title.copyWith(

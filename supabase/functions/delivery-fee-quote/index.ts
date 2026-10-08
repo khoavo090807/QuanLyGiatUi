@@ -121,6 +121,66 @@ Deno.serve(async (request) => {
   const admin = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   })
+  const pickupAddressHash = await addressHash(pickupAddress || null)
+  const deliveryAddressHash = await addressHash(deliveryAddress || null)
+  const now = new Date().toISOString()
+  await admin.from('delivery_fee_quotes').delete().lt('expires_at', now)
+
+  // Reuse a live quote for the same user and address pair. This avoids another
+  // Google Routes request when a screen rebuilds or the user retries.
+  let cachedQuoteQuery = admin
+    .from('delivery_fee_quotes')
+    .select('id, expires_at, pickup_distance_meters, delivery_distance_meters')
+    .eq('auth_user_id', userData.user.id)
+    .gt('expires_at', now)
+  cachedQuoteQuery = pickupAddressHash
+    ? cachedQuoteQuery.eq('pickup_address_hash', pickupAddressHash)
+    : cachedQuoteQuery.is('pickup_address_hash', null)
+  cachedQuoteQuery = deliveryAddressHash
+    ? cachedQuoteQuery.eq('delivery_address_hash', deliveryAddressHash)
+    : cachedQuoteQuery.is('delivery_address_hash', null)
+  const { data: cachedQuote, error: cacheError } = await cachedQuoteQuery
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (cacheError) {
+    console.error('Could not find a reusable delivery fee quote', cacheError)
+    return respond({ error: 'Chưa thể kiểm tra báo giá giao nhận. Vui lòng thử lại.' }, 503)
+  }
+  if (cachedQuote) {
+    const pickupDistanceMeters = cachedQuote.pickup_distance_meters
+    const deliveryDistanceMeters = cachedQuote.delivery_distance_meters
+    const pickupFeeVnd = pickupAddress ? feeFor(pickupDistanceMeters) : 0
+    const deliveryFeeVnd = deliveryAddress ? feeFor(deliveryDistanceMeters) : 0
+    // Keep quote tokens one-use per checkout while reusing route computation.
+    const expiresAt = new Date(Date.now() + quoteLifetimeMs).toISOString()
+    const { data: quote, error: insertError } = await admin
+      .from('delivery_fee_quotes')
+      .insert({
+        auth_user_id: userData.user.id,
+        pickup_address_hash: pickupAddressHash,
+        delivery_address_hash: deliveryAddressHash,
+        pickup_distance_meters: pickupDistanceMeters,
+        delivery_distance_meters: deliveryDistanceMeters,
+        expires_at: expiresAt,
+      })
+      .select('id, expires_at')
+      .single()
+    if (insertError) {
+      console.error('Could not create a delivery quote from cached routes', insertError)
+      return respond({ error: 'Không lưu được báo giá giao nhận.' }, 500)
+    }
+    return respond({
+      quoteId: quote.id,
+      expiresAt: quote.expires_at,
+      pickupDistanceMeters,
+      pickupFeeVnd,
+      deliveryDistanceMeters,
+      deliveryFeeVnd,
+      totalFeeVnd: pickupFeeVnd + deliveryFeeVnd,
+    })
+  }
+
   const requestWindowStart = new Date(Date.now() - 60 * 1000).toISOString()
   await admin
     .from('delivery_fee_quote_attempts')
@@ -145,8 +205,6 @@ Deno.serve(async (request) => {
     console.error('Could not record delivery quote request', attemptError)
     return respond({ error: 'Chưa thể tính phí giao nhận. Vui lòng thử lại.' }, 503)
   }
-  await admin.from('delivery_fee_quotes').delete().lt('expires_at', new Date().toISOString())
-
   try {
     let pickup: RouteQuote | null = null
     let delivery: RouteQuote | null = null
@@ -163,8 +221,8 @@ Deno.serve(async (request) => {
       .from('delivery_fee_quotes')
       .insert({
         auth_user_id: userData.user.id,
-        pickup_address_hash: await addressHash(pickupAddress || null),
-        delivery_address_hash: await addressHash(deliveryAddress || null),
+        pickup_address_hash: pickupAddressHash,
+        delivery_address_hash: deliveryAddressHash,
         pickup_distance_meters: pickup?.distanceMeters ?? 0,
         delivery_distance_meters: delivery?.distanceMeters ?? 0,
         expires_at: expiresAt,

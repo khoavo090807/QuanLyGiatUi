@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:app_quanly_giaiui/core/navigation/app_router.dart';
 import 'package:app_quanly_giaiui/features/notification/data/notification_repository.dart';
@@ -18,22 +20,21 @@ class _NotificationOverlayState extends State<NotificationOverlay> {
   final _notifications = <LaundryNotification>[];
   final _queuedNotificationIds = <int>{};
   OverlayEntry? _currentEntry;
+  StreamSubscription<LaundryNotification>? _subscription;
 
   @override
   void initState() {
     super.initState();
-    _service.onNewNotification.listen(_handleNewNotification);
+    _subscription = _service.onNewNotification.listen(_handleNewNotification);
   }
 
   Future<void> _handleNewNotification(LaundryNotification notification) async {
     if (!_queuedNotificationIds.add(notification.id)) return;
     await _service.playNotificationSound();
 
-    setState(() {
-      _notifications.add(notification);
-    });
-
-    _showNotification(notification);
+    if (!mounted) return;
+    setState(() => _notifications.add(notification));
+    if (_currentEntry == null) _showNotification(notification);
   }
 
   void _showNotification(LaundryNotification notification) {
@@ -44,8 +45,6 @@ class _NotificationOverlayState extends State<NotificationOverlay> {
       });
       return;
     }
-
-    _currentEntry?.remove();
 
     _currentEntry = OverlayEntry(
       builder: (context) => Positioned(
@@ -75,6 +74,7 @@ class _NotificationOverlayState extends State<NotificationOverlay> {
 
   @override
   void dispose() {
+    _subscription?.cancel();
     _currentEntry?.remove();
     super.dispose();
   }

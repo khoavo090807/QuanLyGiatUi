@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:app_quanly_giaiui/core/utils/database_timestamp.dart';
 
 class ChatThread {
   const ChatThread({
@@ -12,6 +13,7 @@ class ChatThread {
     this.orderId,
     this.orderNumber,
     this.avatarUrl,
+    this.initialMessageId,
   });
 
   final int peerAccountId;
@@ -24,6 +26,7 @@ class ChatThread {
   final int? orderId;
   final String? orderNumber;
   final String? avatarUrl;
+  final int? initialMessageId;
 }
 
 class ChatMessage {
@@ -50,7 +53,7 @@ class ChatMessage {
     senderId: ((row['nguoiguiid'] ?? row['NguoiGuiID']) as num).toInt(),
     recipientId: ((row['nguoinhanid'] ?? row['NguoiNhanID']) as num).toInt(),
     content: (row['noidung'] ?? row['NoiDung']) as String? ?? '',
-    sentAt: DateTime.parse((row['thoigiangui'] ?? row['ThoiGianGui']) as String),
+    sentAt: parseDatabaseTimestamp((row['thoigiangui'] ?? row['ThoiGianGui']) as String),
     status: (row['trangthai'] ?? row['TrangThai']) as String? ?? '',
     orderId: ((row['donhangid'] ?? row['DonHangID']) as num?)?.toInt(),
   );
@@ -75,6 +78,31 @@ class MessageRepository {
     return value.toInt();
   }
 
+  Future<ChatThread> getThreadForMessage(int messageId) async {
+    final accountId = await getCurrentAccountId();
+    final row = await _client.from('TinNhan').select(
+      'TinNhanID,NguoiGuiID,NguoiNhanID,DonHangID,NoiDung,ThoiGianGui,TrangThai',
+    ).eq('TinNhanID', messageId).maybeSingle();
+    if (row == null) throw StateError('Không tìm thấy tin nhắn.');
+    final message = ChatMessage.fromJson(row);
+    if (message.senderId != accountId && message.recipientId != accountId) {
+      throw StateError('Bạn không có quyền xem tin nhắn này.');
+    }
+    final peerId = message.senderId == accountId ? message.recipientId : message.senderId;
+    return ChatThread(
+      peerAccountId: peerId,
+      currentAccountId: accountId,
+      title: message.orderId == null ? 'Hỗ trợ cửa hàng' : 'Trao đổi về đơn hàng',
+      lastMessage: message.content,
+      lastMessageAt: message.sentAt,
+      unreadCount: 0,
+      isStaff: false,
+      orderId: message.orderId,
+      orderNumber: message.orderId == null ? null : '#${message.orderId}',
+      initialMessageId: messageId,
+    );
+  }
+
   Future<List<ChatThread>> getThreads({required bool isStaff, int? initialOrderId}) async {
     final accountId = await getCurrentAccountId();
     if (isStaff) {
@@ -87,14 +115,14 @@ class MessageRepository {
           currentAccountId: accountId,
           title: row['customer_name'] as String? ?? 'Khách hàng',
           lastMessage: row['last_message'] as String? ?? '',
-          lastMessageAt: DateTime.tryParse(row['last_message_at'] as String? ?? ''),
+          lastMessageAt: tryParseDatabaseTimestamp(row['last_message_at'] as String?),
           unreadCount: (row['unread_count'] as num? ?? 0).toInt(),
           isStaff: true,
           orderId: orderId,
           orderNumber: row['order_number'] as String?,
           avatarUrl: row['customer_avatar_url'] as String?,
         );
-      }).toList(growable: false);
+      }).where((thread) => initialOrderId == null || thread.orderId == initialOrderId).toList(growable: false);
     }
 
     final supportId = await getSupportAccountId();
@@ -107,7 +135,10 @@ class MessageRepository {
       final message = ChatMessage.fromJson(raw as Map<String, dynamic>);
       groups.putIfAbsent(message.orderId, () => []).add(message);
     }
-    if (initialOrderId != null) groups.putIfAbsent(initialOrderId, () => []);
+    if (initialOrderId != null) {
+      groups.removeWhere((orderId, _) => orderId != initialOrderId);
+      groups.putIfAbsent(initialOrderId, () => []);
+    }
     if (groups.isEmpty) groups[null] = [];
 
     return groups.entries.map((entry) {

@@ -195,7 +195,7 @@ class HomeScreenState extends State<HomeScreen> {
             valueListenable: widget.unreadNotificationCount,
             builder: (context, unreadCount, child) => IconButton(
               tooltip: AppStrings.notifications,
-              onPressed: () => context.go(AppRoutes.notificationsPath),
+              onPressed: widget.onOpenNotifications,
               icon: Badge(
                 isLabelVisible: unreadCount > 0,
                 smallSize: 8,
@@ -227,6 +227,7 @@ class HomeScreenState extends State<HomeScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Container(
+        constraints: const BoxConstraints(minHeight: 216),
         decoration: BoxDecoration(
           gradient: AppColors.heroCardGradient,
           borderRadius: BorderRadius.circular(16),
@@ -234,18 +235,48 @@ class HomeScreenState extends State<HomeScreen> {
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: order == null
+              ? MainAxisAlignment.center
+              : MainAxisAlignment.start,
           children: order == null
               ? [
-                  Text(
-                    'Chưa có đơn đang xử lý',
-                    style: AppTypography.title.copyWith(color: Colors.white),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Các cập nhật mới nhất về đơn hàng sẽ hiện ở đây.',
-                    style: AppTypography.bodySmall.copyWith(
-                      color: Colors.white,
-                    ),
+                  Row(
+                    children: [
+                      Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.18),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Icon(
+                          Icons.local_laundry_service_outlined,
+                          color: Colors.white,
+                          size: 26,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Chưa có đơn đang xử lý',
+                              style: AppTypography.title.copyWith(
+                                color: Colors.white,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Các cập nhật mới nhất về đơn hàng sẽ hiện ở đây.',
+                              style: AppTypography.bodySmall.copyWith(
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ]
               : [

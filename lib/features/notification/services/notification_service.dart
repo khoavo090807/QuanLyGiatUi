@@ -16,8 +16,11 @@ class NotificationService {
 
   RealtimeChannel? _channel;
   StreamSubscription<AuthState>? _authSubscription;
+  Timer? _pollTimer;
   int? _subscribedTaiKhoanId;
   bool _isInitialized = false;
+  bool _isPolling = false;
+  final _notificationRepository = NotificationRepository();
   final Set<int> _deliveredNotificationIds = <int>{};
 
   Stream<LaundryNotification> get onNewNotification =>
@@ -47,15 +50,20 @@ class NotificationService {
   Future<void> _subscribeForCurrentUser() async {
     final user = _client.auth.currentUser;
     if (user == null) {
+      _pollTimer?.cancel();
+      _pollTimer = null;
       await _unsubscribeCurrentChannel();
       return;
     }
 
     int? taikhoanId;
     try {
-      final result = await _client.rpc('get_taikhoanid_from_auth');
-      taikhoanId = result as int?;
-      if (taikhoanId == null) return;
+      final result = await _client.rpc('get_current_account_id');
+      taikhoanId = result is num ? result.toInt() : null;
+      if (taikhoanId == null) {
+        debugPrint('Realtime notifications not started: no application account id.');
+        return;
+      }
     } catch (e) {
       debugPrint('Failed to get taikhoanid: $e');
       return;
@@ -66,6 +74,15 @@ class NotificationService {
     }
 
     await _unsubscribeCurrentChannel();
+
+    // Record notifications already in the inbox so opening the app never
+    // replays old notifications as new popups.
+    try {
+      final existing = await _notificationRepository.getRecentNotifications();
+      _deliveredNotificationIds.addAll(existing.map((item) => item.id));
+    } catch (e) {
+      debugPrint('Could not load the initial notification snapshot: $e');
+    }
 
     _channel = _client
         .channel('notifications:${user.id}')
@@ -79,20 +96,55 @@ class NotificationService {
             value: taikhoanId,
           ),
           callback: (payload) {
-            final notification = LaundryNotification.fromJson(
-            payload.newRecord,
-            );
-            if (!_deliveredNotificationIds.add(notification.id)) return;
-            _newNotificationController.add(notification);
+            try {
+              _deliverIfNew(LaundryNotification.fromJson(payload.newRecord));
+            } catch (e) {
+              debugPrint('Could not parse a realtime notification: $e');
+            }
           },
         )
-        .subscribe();
+        .subscribe((status, error) {
+          if (status == RealtimeSubscribeStatus.subscribed) {
+            debugPrint('Realtime notification channel connected.');
+          } else if (error != null) {
+            debugPrint('Realtime notification channel error: $error');
+          }
+        });
 
     _subscribedTaiKhoanId = taikhoanId;
+    _pollTimer ??= Timer.periodic(
+      const Duration(seconds: 10),
+      (_) => _pollForNewNotifications(),
+    );
+  }
+
+  Future<void> _pollForNewNotifications() async {
+    if (_isPolling || _subscribedTaiKhoanId == null) return;
+    _isPolling = true;
+    try {
+      final latest = await _notificationRepository.getRecentNotifications();
+      for (final notification in latest.reversed) {
+        _deliverIfNew(notification);
+      }
+    } catch (e) {
+      debugPrint('Could not check for new notifications: $e');
+    } finally {
+      _isPolling = false;
+    }
+  }
+
+  void _deliverIfNew(LaundryNotification notification) {
+    if (!_deliveredNotificationIds.add(notification.id)) return;
+    if (_deliveredNotificationIds.length > 500) {
+      _deliveredNotificationIds.remove(_deliveredNotificationIds.first);
+    }
+    _newNotificationController.add(notification);
   }
 
   Future<void> dispose() async {
     await _authSubscription?.cancel();
+    _pollTimer?.cancel();
+    _pollTimer = null;
     await _unsubscribeCurrentChannel();
     await _newNotificationController.close();
     _isInitialized = false;

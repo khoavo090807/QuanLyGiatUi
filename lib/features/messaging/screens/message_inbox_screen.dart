@@ -20,6 +20,7 @@ class _MessageInboxScreenState extends State<MessageInboxScreen> {
   late Future<List<ChatThread>> _threadsFuture;
   bool? _isStaff;
   RealtimeChannel? _channel;
+  bool _autoOpenedInitialOrder = false;
 
   @override
   void initState() {
@@ -95,6 +96,13 @@ class _MessageInboxScreenState extends State<MessageInboxScreen> {
           ));
         }
         final threads = snapshot.data ?? const <ChatThread>[];
+        if (widget.initialOrderId != null && threads.length == 1 && !_autoOpenedInitialOrder) {
+          _autoOpenedInitialOrder = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) context.pushReplacementNamed(AppRoutes.chat, extra: threads.single);
+          });
+          return const Center(child: CircularProgressIndicator());
+        }
         if (threads.isEmpty) {
           return const Center(child: Text('Chưa có tin nhắn nào.'));
         }
@@ -103,7 +111,7 @@ class _MessageInboxScreenState extends State<MessageInboxScreen> {
           child: ListView.separated(
             physics: const AlwaysScrollableScrollPhysics(),
             itemCount: threads.length,
-            separatorBuilder: (_, __) => const Divider(height: 1, indent: 76),
+            separatorBuilder: (_, _) => const Divider(height: 1, indent: 76),
             itemBuilder: (context, index) {
               final thread = threads[index];
               return ListTile(

@@ -119,7 +119,8 @@ class _MainShellState extends State<MainShell> {
                 HomeScreen(
                   key: _homeScreenKey,
                   unreadNotificationCount: _unreadNotificationCount,
-                  onOpenNotifications: () => _onDestinationSelected(2, false),
+                  onOpenNotifications: () =>
+                      _onDestinationSelected(isStaff ? 1 : 2, isStaff),
                 ),
                 HistoryScreen(
                   onVisibilityChanged: (setVisibility) {

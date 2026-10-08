@@ -4,6 +4,7 @@ import 'package:app_quanly_giaiui/core/navigation/app_routes.dart';
 import 'package:app_quanly_giaiui/core/theme/app_colors.dart';
 import 'package:app_quanly_giaiui/core/theme/app_typography.dart';
 import 'package:app_quanly_giaiui/features/notification/data/notification_repository.dart';
+import 'package:app_quanly_giaiui/features/messaging/data/message_repository.dart';
 
 class NotificationPopup extends StatefulWidget {
   const NotificationPopup({
@@ -57,14 +58,56 @@ class _NotificationPopupState extends State<NotificationPopup>
     widget.onDismiss();
   }
 
-  void _onTap() {
+  Future<void> _onTap() async {
+    final notification = widget.notification;
+    final router = GoRouter.of(context);
     _dismiss();
-    if (widget.notification.orderId != null && mounted) {
-      context.pushNamed(
-        AppRoutes.trackingDetail,
-        pathParameters: {'id': widget.notification.orderId.toString()},
-      );
+    try {
+      await NotificationRepository().markRead(notification.id);
+    } catch (_) {
+      // Navigation should still work if updating the read state fails.
     }
+
+    if (notification.messageId != null) {
+      try {
+        final thread = await MessageRepository().getThreadForMessage(notification.messageId!);
+        router.pushNamed(AppRoutes.chat, extra: thread);
+      } catch (_) {
+        if (notification.orderId != null) {
+          router.pushNamed(AppRoutes.trackingDetail, pathParameters: {'id': notification.orderId.toString()});
+        }
+      }
+      return;
+    }
+    if (notification.orderId != null) {
+      router.pushNamed(
+        AppRoutes.trackingDetail,
+        pathParameters: {'id': notification.orderId.toString()},
+      );
+    } else if (_isOrderOrBookingNotification(notification)) {
+      try {
+        final bookingId = await NotificationRepository().findBookingId(
+          notification.message,
+          bookingId: notification.bookingId,
+        );
+        if (bookingId != null) {
+          router.pushNamed(
+            AppRoutes.trackingDetail,
+            pathParameters: {'id': 'booking_$bookingId'},
+          );
+        } else {
+          router.pushNamed(AppRoutes.myOrders);
+        }
+      } catch (_) {
+        router.pushNamed(AppRoutes.myOrders);
+      }
+    }
+  }
+
+  bool _isOrderOrBookingNotification(LaundryNotification notification) {
+    final type = (notification.type ?? '').toLowerCase();
+    return type.contains('booking') || type.contains('order') ||
+        RegExp(r'\bBK-').hasMatch(notification.message);
   }
 
   @override

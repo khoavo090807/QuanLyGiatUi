@@ -21,6 +21,8 @@ class _ChatScreenState extends State<ChatScreen> {
   late Future<List<ChatMessage>> _messagesFuture;
   RealtimeChannel? _channel;
   bool _sending = false;
+  bool _didFocusInitialMessage = false;
+  final Map<int, GlobalKey> _messageKeys = <int, GlobalKey>{};
 
   @override
   void initState() {
@@ -120,23 +122,28 @@ class _ChatScreenState extends State<ChatScreen> {
                 child: Text('Bắt đầu cuộc trò chuyện với cửa hàng.'),
               ));
             }
-            WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
-            return ListView.builder(
+            if (widget.thread.initialMessageId != null && !_didFocusInitialMessage) {
+              WidgetsBinding.instance.addPostFrameCallback((_) => _focusInitialMessage(messages));
+            } else if (widget.thread.initialMessageId == null) {
+              WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+            }
+            return ListView(
               controller: _scrollController,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-              itemCount: messages.length,
-              itemBuilder: (context, index) {
-                final message = messages[index];
+              children: messages.map((message) {
                 final mine = message.senderId == widget.thread.currentAccountId;
                 final time = message.sentAt.toLocal();
                 return Align(
+                  key: _messageKeys.putIfAbsent(message.id, GlobalKey.new),
                   alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
                   child: Container(
                     constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * .78),
                     margin: const EdgeInsets.only(bottom: 10),
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                     decoration: BoxDecoration(
-                      color: mine ? AppColors.primary : Colors.white,
+                      color: message.id == widget.thread.initialMessageId
+                          ? AppColors.primaryLight
+                          : mine ? AppColors.primary : Colors.white,
                       borderRadius: BorderRadius.circular(16),
                       border: mine ? null : Border.all(color: AppColors.divider),
                     ),
@@ -145,7 +152,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       children: [
                         Align(
                           alignment: Alignment.centerLeft,
-                          child: Text(message.content, style: TextStyle(color: mine ? Colors.white : AppColors.textPrimary)),
+                          child: Text(message.content, style: TextStyle(color: mine && message.id != widget.thread.initialMessageId ? Colors.white : AppColors.textPrimary)),
                         ),
                         const SizedBox(height: 4),
                         Text('${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}',
@@ -154,7 +161,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                   ),
                 );
-              },
+              }).toList(growable: false),
             );
           },
         ),
@@ -196,4 +203,25 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
     ]),
   );
+
+  void _focusInitialMessage(List<ChatMessage> messages) {
+    final messageId = widget.thread.initialMessageId;
+    if (!mounted || messageId == null || _didFocusInitialMessage) return;
+    ChatMessage? message;
+    for (final item in messages) {
+      if (item.id == messageId) {
+        message = item;
+        break;
+      }
+    }
+    final key = _messageKeys[messageId];
+    if (message == null || key?.currentContext == null) return;
+    _didFocusInitialMessage = true;
+    Scrollable.ensureVisible(
+      key!.currentContext!,
+      alignment: 0.5,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+    );
+  }
 }
