@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -9,6 +10,10 @@ class NotificationService {
   NotificationService._();
 
   static final NotificationService instance = NotificationService._();
+
+  static const _soundChannel = MethodChannel(
+    'com.example.app_quanly_giaiui/notification_sound',
+  );
 
   final _client = Supabase.instance.client;
   final _newNotificationController =
@@ -174,7 +179,13 @@ class NotificationService {
     if (!_notificationEnabled) return;
 
     try {
-      await SystemSound.play(SystemSoundType.alert);
+      // SystemSoundType.alert is not consistently mapped to an audible sound
+      // by Android. Use Android's notification audio stream there instead.
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        await _soundChannel.invokeMethod<void>('play');
+      } else {
+        await SystemSound.play(SystemSoundType.alert);
+      }
     } catch (e) {
       debugPrint('Failed to play notification sound: $e');
     }
