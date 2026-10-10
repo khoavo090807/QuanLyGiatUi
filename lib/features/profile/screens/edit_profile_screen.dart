@@ -12,9 +12,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   final _repository = AuthRepository();
   final _formKey = GlobalKey<FormState>();
   final _name = TextEditingController();
-  final _email = TextEditingController();
-  final _phone = TextEditingController();
-  final _address = TextEditingController();
+  String? _email;
+  String? _phone;
+  String? _address;
   bool _loading = true;
   bool _saving = false;
   String? _avatarUrl;
@@ -41,9 +41,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       } else {
         setState(() {
           _name.text = profile.displayName;
-          _email.text = profile.email ?? '';
-          _phone.text = profile.phone ?? '';
-          _address.text = profile.address ?? '';
+          _email = profile.email;
+          _phone = profile.phone;
+          _address = profile.address;
           _avatarUrl = profile.avatarUrl;
           _loadError = null;
         });
@@ -99,9 +99,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     try {
       await _repository.updateCustomerProfile(
         fullName: _name.text,
-        email: _email.text,
-        phone: _phone.text,
-        address: _address.text,
+        email: _email,
+        phone: _phone,
+        address: _address,
       );
       if (mounted) Navigator.pop(context);
     } catch (error) {
@@ -118,9 +118,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   void dispose() {
     _name.dispose();
-    _email.dispose();
-    _phone.dispose();
-    _address.dispose();
     super.dispose();
   }
 
@@ -177,26 +174,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   validator: (value) => value == null || value.trim().isEmpty
                       ? 'Vui lòng nhập họ tên'
                       : null,
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _email,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(labelText: 'Email'),
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _phone,
-                  keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(labelText: 'Số điện thoại'),
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _address,
-                  maxLines: 3,
-                  decoration: const InputDecoration(
-                    labelText: 'Địa chỉ mặc định',
-                  ),
                 ),
               ],
             ),
