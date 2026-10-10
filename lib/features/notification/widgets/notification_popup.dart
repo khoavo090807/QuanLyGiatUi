@@ -177,6 +177,7 @@ class _NotificationPopupState extends State<NotificationPopup>
 
   IconData _iconFor(String? type) {
     final normalized = (type ?? '').toLowerCase();
+    if (normalized.contains('message')) return Icons.chat_bubble_outline;
     if (normalized.contains('order_created') || normalized.contains('booking')) {
       return Icons.shopping_bag_outlined;
     }

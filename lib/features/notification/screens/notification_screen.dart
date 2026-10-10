@@ -411,6 +411,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
   IconData _iconFor(String? type) {
     final normalized = (type ?? '').toLowerCase();
+    if (normalized.contains('message')) return Icons.chat_bubble_outline;
     if (normalized.contains('giao')) return Icons.local_shipping_outlined;
     if (normalized.contains('thanh')) return Icons.payments_outlined;
     return Icons.local_laundry_service_outlined;

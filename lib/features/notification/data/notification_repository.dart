@@ -83,6 +83,15 @@ class NotificationRepository {
     return (rows as List<dynamic>).length;
   }
 
+  Future<int> getUnreadMessageCount() async {
+    final rows = await _client
+        .from('thongbao')
+        .select('thongbaoid')
+        .eq('loaithongbao', 'new_message')
+        .eq('dadoc', false);
+    return (rows as List<dynamic>).length;
+  }
+
   Future<void> markRead(int notificationId) async {
     await _client.rpc(
       'mark_notifications_read',

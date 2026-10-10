@@ -42,6 +42,7 @@ class _MainShellState extends State<MainShell> {
   final _authRepository = AuthRepository();
   final _homeScreenKey = GlobalKey<HomeScreenState>();
   final _unreadNotificationCount = ValueNotifier<int>(0);
+  final _unreadMessageCount = ValueNotifier<int>(0);
   late Future<List<String>> _rolesFuture;
   late int _selectedIndex;
   bool _isStaff = false;
@@ -73,6 +74,7 @@ class _MainShellState extends State<MainShell> {
   void dispose() {
     MainShell.tabRequests.removeListener(_onTabRequest);
     _unreadNotificationCount.dispose();
+    _unreadMessageCount.dispose();
     super.dispose();
   }
 
@@ -119,6 +121,7 @@ class _MainShellState extends State<MainShell> {
                 HomeScreen(
                   key: _homeScreenKey,
                   unreadNotificationCount: _unreadNotificationCount,
+                  unreadMessageCount: _unreadMessageCount,
                   onOpenNotifications: () =>
                       _onDestinationSelected(isStaff ? 1 : 2, isStaff),
                 ),

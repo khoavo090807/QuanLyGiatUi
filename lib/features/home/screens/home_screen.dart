@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:app_quanly_giaiui/core/constants/app_strings.dart';
@@ -7,6 +9,7 @@ import 'package:app_quanly_giaiui/core/widgets/section_header.dart';
 import 'package:app_quanly_giaiui/core/navigation/app_routes.dart';
 import 'package:app_quanly_giaiui/features/auth/data/auth_repository.dart';
 import 'package:app_quanly_giaiui/features/notification/data/notification_repository.dart';
+import 'package:app_quanly_giaiui/features/notification/services/notification_service.dart';
 import 'package:app_quanly_giaiui/features/order/data/order_repository.dart';
 import 'package:app_quanly_giaiui/features/order/domain/cart_store.dart';
 import 'package:app_quanly_giaiui/features/order/widgets/cart_icon_button.dart';
@@ -14,11 +17,13 @@ import 'package:app_quanly_giaiui/features/order/widgets/cart_icon_button.dart';
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
     required this.unreadNotificationCount,
+    required this.unreadMessageCount,
     required this.onOpenNotifications,
     super.key,
   });
 
   final ValueNotifier<int> unreadNotificationCount;
+  final ValueNotifier<int> unreadMessageCount;
   final VoidCallback onOpenNotifications;
   @override
   State<HomeScreen> createState() => HomeScreenState();
@@ -29,11 +34,24 @@ class HomeScreenState extends State<HomeScreen> {
   final _authRepository = AuthRepository();
   final _notificationRepository = NotificationRepository();
   late Future<_HomeData> _homeData;
+  StreamSubscription<LaundryNotification>? _notificationSubscription;
+  Timer? _messageCountTimer;
+  bool _refreshingMessageCount = false;
 
   @override
   void initState() {
     super.initState();
     _homeData = _loadHomeData();
+    _notificationSubscription = NotificationService.instance.onNewNotification
+        .listen((notification) {
+          if (notification.type == 'new_message') {
+            _refreshUnreadMessageCount();
+          }
+        });
+    _messageCountTimer = Timer.periodic(
+      const Duration(seconds: 12),
+      (_) => _refreshUnreadMessageCount(),
+    );
   }
 
   Future<_HomeData> _loadHomeData() async {
@@ -63,6 +81,13 @@ class HomeScreenState extends State<HomeScreen> {
       if (mounted) widget.unreadNotificationCount.value = unreadCount;
     } catch (_) {
       if (mounted) widget.unreadNotificationCount.value = 0;
+    }
+    try {
+      final unreadMessages = await _notificationRepository
+          .getUnreadMessageCount();
+      if (mounted) widget.unreadMessageCount.value = unreadMessages;
+    } catch (_) {
+      if (mounted) widget.unreadMessageCount.value = 0;
     }
 
     return _HomeData(
@@ -188,8 +213,19 @@ class HomeScreenState extends State<HomeScreen> {
           const CartIconButton(),
           IconButton(
             tooltip: 'Tin nhắn với cửa hàng',
-            onPressed: () => context.push(AppRoutes.messagesPath),
-            icon: const Icon(Icons.chat_bubble_outline),
+            onPressed: () async {
+              await context.push(AppRoutes.messagesPath);
+              await _refreshUnreadMessageCount();
+            },
+            icon: ValueListenableBuilder<int>(
+              valueListenable: widget.unreadMessageCount,
+              builder: (context, count, child) => Badge(
+                isLabelVisible: count > 0,
+                label: Text(count > 99 ? '99+' : '$count'),
+                child: child,
+              ),
+              child: const Icon(Icons.chat_bubble_outline),
+            ),
           ),
           ValueListenableBuilder<int>(
             valueListenable: widget.unreadNotificationCount,
@@ -379,6 +415,26 @@ class HomeScreenState extends State<HomeScreen> {
         label: const Text('Mở hàng đợi nhân viên'),
       ),
     );
+  }
+
+  Future<void> _refreshUnreadMessageCount() async {
+    if (_refreshingMessageCount || !mounted) return;
+    _refreshingMessageCount = true;
+    try {
+      final count = await _notificationRepository.getUnreadMessageCount();
+      if (mounted) widget.unreadMessageCount.value = count;
+    } catch (_) {
+      // Keep the last known badge count during transient network failures.
+    } finally {
+      _refreshingMessageCount = false;
+    }
+  }
+
+  @override
+  void dispose() {
+    _messageCountTimer?.cancel();
+    _notificationSubscription?.cancel();
+    super.dispose();
   }
 
   Widget _buildLaundryCatalogShortcut(BuildContext context) {

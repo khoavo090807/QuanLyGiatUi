@@ -85,7 +85,9 @@ class MessageRepository {
     ).eq('TinNhanID', messageId).maybeSingle();
     if (row == null) throw StateError('Không tìm thấy tin nhắn.');
     final message = ChatMessage.fromJson(row);
-    if (message.senderId != accountId && message.recipientId != accountId) {
+    if (message.orderId == null &&
+        message.senderId != accountId &&
+        message.recipientId != accountId) {
       throw StateError('Bạn không có quyền xem tin nhắn này.');
     }
     final peerId = message.senderId == accountId ? message.recipientId : message.senderId;
@@ -129,7 +131,19 @@ class MessageRepository {
     final rows = await _client
         .from('TinNhan')
         .select('TinNhanID,NguoiGuiID,NguoiNhanID,DonHangID,NoiDung,ThoiGianGui,TrangThai')
-        .order('ThoiGianGui');
+        .order('ThoiGianGui', ascending: true)
+        .order('TinNhanID', ascending: true);
+    final unreadNotifications = await _client
+        .from('thongbao')
+        .select('donhangid')
+        .eq('loaithongbao', 'new_message')
+        .eq('dadoc', false);
+    final unreadByOrder = <int?, int>{};
+    for (final raw in unreadNotifications as List<dynamic>) {
+      final orderId = ((raw as Map<String, dynamic>)['donhangid'] as num?)
+          ?.toInt();
+      unreadByOrder.update(orderId, (count) => count + 1, ifAbsent: () => 1);
+    }
     final groups = <int?, List<ChatMessage>>{};
     for (final raw in rows as List<dynamic>) {
       final message = ChatMessage.fromJson(raw as Map<String, dynamic>);
@@ -150,7 +164,7 @@ class MessageRepository {
         title: entry.key == null ? 'Hỗ trợ cửa hàng' : 'Trao đổi về đơn hàng',
         lastMessage: last?.content ?? 'Nhắn tin với cửa hàng',
         lastMessageAt: last?.sentAt,
-        unreadCount: messages.where((m) => m.recipientId == accountId && m.status != 'Đã đọc').length,
+        unreadCount: unreadByOrder[entry.key] ?? 0,
         isStaff: false,
         orderId: entry.key,
         orderNumber: entry.key == null ? null : '#${entry.key}',
@@ -166,18 +180,32 @@ class MessageRepository {
               .from('TinNhan')
               .select('TinNhanID,NguoiGuiID,NguoiNhanID,DonHangID,NoiDung,ThoiGianGui,TrangThai')
               .isFilter('DonHangID', null)
-              .order('ThoiGianGui')
+              .order('ThoiGianGui', ascending: true)
+              .order('TinNhanID', ascending: true)
         : await _client
               .from('TinNhan')
               .select('TinNhanID,NguoiGuiID,NguoiNhanID,DonHangID,NoiDung,ThoiGianGui,TrangThai')
               .eq('DonHangID', thread.orderId!)
-              .order('ThoiGianGui');
-    return (rows as List<dynamic>)
+              .order('ThoiGianGui', ascending: true)
+              .order('TinNhanID', ascending: true);
+    final messages = (rows as List<dynamic>)
         .map((row) => ChatMessage.fromJson(row as Map<String, dynamic>))
-        .where((message) => thread.isStaff
+        // An order is the conversation boundary. A customer's multiple
+        // accounts can be linked to the same customer/order, and staff may
+        // have addressed another linked account. RLS limits order rows to
+        // the order owner or authorized staff. Keep participant filtering
+        // only for support chats that are not tied to an order.
+        .where((message) => thread.orderId != null || (thread.isStaff
             ? message.senderId == thread.peerAccountId || message.recipientId == thread.peerAccountId
-            : message.senderId == thread.currentAccountId || message.recipientId == thread.currentAccountId)
-        .toList(growable: false);
+            : message.senderId == thread.currentAccountId || message.recipientId == thread.currentAccountId))
+        .toList();
+    // Keep display order deterministic even if the API or a cached response
+    // returns rows in a different order. IDs break ties for same-time messages.
+    messages.sort((a, b) {
+      final byTime = a.sentAt.compareTo(b.sentAt);
+      return byTime != 0 ? byTime : a.id.compareTo(b.id);
+    });
+    return messages;
   }
 
   Future<void> sendMessage(ChatThread thread, String content) async {

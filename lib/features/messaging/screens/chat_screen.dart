@@ -14,12 +14,15 @@ class ChatScreen extends StatefulWidget {
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _ChatScreenState extends State<ChatScreen> {
+class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   final _repository = MessageRepository();
   final _textController = TextEditingController();
   final _scrollController = ScrollController();
   late Future<List<ChatMessage>> _messagesFuture;
   RealtimeChannel? _channel;
+  Timer? _refreshTimer;
+  bool _refreshInProgress = false;
+  bool _refreshRequested = false;
   bool _sending = false;
   bool _didFocusInitialMessage = false;
   final Map<int, GlobalKey> _messageKeys = <int, GlobalKey>{};
@@ -27,8 +30,17 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _messagesFuture = _loadMessages();
     _channel = _repository.subscribe(_onRealtimeChange);
+    // Realtime is the fast path. Periodic refresh recovers messages if the
+    // socket disconnects or the platform temporarily suspends the channel.
+    _refreshTimer = Timer.periodic(const Duration(seconds: 5), (_) => _reloadMessages());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _reloadMessages();
   }
 
   Future<List<ChatMessage>> _loadMessages() async {
@@ -44,10 +56,35 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _reloadMessages() {
-    final future = _loadMessages();
-    setState(() {
-      _messagesFuture = future;
-    });
+    if (!mounted) return;
+    // Don't drop realtime events that arrive while a Supabase request is in
+    // flight. Queue another read so the final insert is always fetched.
+    _refreshRequested = true;
+    if (_refreshInProgress) return;
+    _refreshInProgress = true;
+    unawaited(_drainRefreshQueue());
+  }
+
+  Future<void> _drainRefreshQueue() async {
+    try {
+      while (mounted && _refreshRequested) {
+        _refreshRequested = false;
+        final future = _loadMessages();
+        setState(() {
+          _messagesFuture = future;
+        });
+        try {
+          await future;
+        } catch (_) {
+          // FutureBuilder exposes the error and the next realtime/poll event
+          // retries the same Supabase query.
+        }
+      }
+    } finally {
+      _refreshInProgress = false;
+      // An event can arrive between the loop condition and finally.
+      if (mounted && _refreshRequested) _reloadMessages();
+    }
   }
 
   void _scrollToBottom() {
@@ -85,6 +122,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _refreshTimer?.cancel();
     final channel = _channel;
     if (channel != null) Supabase.instance.client.removeChannel(channel);
     _textController.dispose();
