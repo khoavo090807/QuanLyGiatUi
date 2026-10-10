@@ -30,7 +30,9 @@ class _NotificationOverlayState extends State<NotificationOverlay> {
 
   Future<void> _handleNewNotification(LaundryNotification notification) async {
     if (!_queuedNotificationIds.add(notification.id)) return;
-    await _service.playNotificationSound();
+    await _service.playNotificationSound(
+      notificationType: notification.type,
+    );
 
     if (!mounted) return;
     setState(() => _notifications.add(notification));

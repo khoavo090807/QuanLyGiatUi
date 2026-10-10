@@ -175,14 +175,15 @@ class NotificationService {
 
   bool get notificationEnabled => _notificationEnabled;
 
-  Future<void> playNotificationSound() async {
+  Future<void> playNotificationSound({String? notificationType}) async {
     if (!_notificationEnabled) return;
 
     try {
-      // SystemSoundType.alert is not consistently mapped to an audible sound
-      // by Android. Use Android's notification audio stream there instead.
       if (defaultTargetPlatform == TargetPlatform.android) {
-        await _soundChannel.invokeMethod<void>('play');
+        await _soundChannel.invokeMethod<void>(
+          'play',
+          {'type': notificationType},
+        );
       } else {
         await SystemSound.play(SystemSoundType.alert);
       }
