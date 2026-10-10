@@ -161,14 +161,28 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     return total;
   }
 
-  int get _pointsToUse => LaundryOrderPricing.redeemablePoints(
-    availablePoints: _availablePoints,
-    subtotalMinorUnits: _cartTotalMinorUnits,
-  );
+  int _pointsToUseAfterPromotion(LoyaltyVoucher? voucher) {
+    final promotionDiscountMinorUnits = voucher == null
+        ? 0
+        : (_promotionDiscount(voucher) * 100).round();
+    final deliveryFeeMinorUnits =
+        ((_hasHomeDeliveryLeg ? _deliveryQuote?.totalFeeVnd : 0) ?? 0) * 100;
+    final remainingEstimatedTotalMinorUnits = (_cartTotalMinorUnits -
+            promotionDiscountMinorUnits +
+            deliveryFeeMinorUnits)
+        .clamp(0, _cartTotalMinorUnits + deliveryFeeMinorUnits)
+        .toInt();
+    return LaundryOrderPricing.redeemablePoints(
+      availablePoints: _availablePoints,
+      subtotalMinorUnits: remainingEstimatedTotalMinorUnits,
+    );
+  }
 
-  int get _pointsDiscount {
+  int _pointsDiscountAfterPromotion(LoyaltyVoucher? voucher) {
     if (!_usePointsForDiscount) return 0;
-    return LaundryOrderPricing.pointsDiscountMinorUnits(_pointsToUse);
+    return LaundryOrderPricing.pointsDiscountMinorUnits(
+      _pointsToUseAfterPromotion(voucher),
+    );
   }
 
   num _promotionDiscount(LoyaltyVoucher voucher) {
@@ -177,7 +191,11 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     final discount = voucher.discountType == 'Phần trăm'
         ? subtotal * voucher.discountValue / 100
         : voucher.discountValue;
-    return discount.clamp(0, voucher.maximumDiscount ?? discount);
+    final cappedDiscount = discount.clamp(
+      0,
+      voucher.maximumDiscount ?? discount,
+    );
+    return cappedDiscount.clamp(0, subtotal);
   }
 
   bool _isVoucherEligible(LoyaltyVoucher voucher) =>
@@ -433,8 +451,10 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
 
   Widget _discountTotalCard(List<LoyaltyVoucher> vouchers) {
     final voucher = _selectedEligibleVoucher(vouchers);
+    final pointsToUse = _pointsToUseAfterPromotion(voucher);
+    final pointsDiscount = _pointsDiscountAfterPromotion(voucher);
     final deliveryFee = _deliveryQuote?.totalFeeVnd ?? 0;
-    final total = _finalTotal(vouchers) / 100 + deliveryFee;
+    final total = _finalTotal(vouchers) / 100;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -456,11 +476,11 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
               valueColor: AppColors.success,
             ),
           ],
-          if (_usePointsForDiscount && _pointsDiscount > 0) ...[
+          if (_usePointsForDiscount && pointsDiscount > 0) ...[
             const SizedBox(height: 8),
             _PriceBreakdownLine(
-              label: 'Điểm tích lũy ($_pointsToUse điểm)',
-              value: '−${_formatVnd(_pointsDiscount / 100)}',
+              label: 'Điểm tích lũy ($pointsToUse điểm)',
+              value: '−${_formatVnd(pointsDiscount / 100)}',
               valueColor: AppColors.success,
             ),
           ],
@@ -509,10 +529,18 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     final promotionDiscountMinorUnits = selectedVoucher == null
         ? 0
         : (_promotionDiscount(selectedVoucher) * 100).round();
-    final totalDiscountMinorUnits = (_pointsDiscount +
-            promotionDiscountMinorUnits)
-        .clamp(0, _cartTotalMinorUnits);
-    return _cartTotalMinorUnits - totalDiscountMinorUnits;
+    final pointsDiscountMinorUnits =
+        _pointsDiscountAfterPromotion(selectedVoucher);
+    final deliveryFeeMinorUnits =
+        ((_hasHomeDeliveryLeg ? _deliveryQuote?.totalFeeVnd : 0) ?? 0) * 100;
+    final totalBeforePointsMinorUnits =
+        _cartTotalMinorUnits -
+        promotionDiscountMinorUnits +
+        deliveryFeeMinorUnits;
+    return (totalBeforePointsMinorUnits - pointsDiscountMinorUnits).clamp(
+      0,
+      totalBeforePointsMinorUnits,
+    ).toInt();
   }
 
   Future<void> _loadAvailablePoints() async {
@@ -1059,6 +1087,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       return;
     }
     final deliveryQuote = await _ensureDeliveryQuote();
+    if (!mounted) return;
     if (_hasHomeDeliveryLeg && deliveryQuote == null) return;
 
     final selectedVoucher = vouchers
@@ -1068,6 +1097,10 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
               _isVoucherEligible(voucher),
         )
         .firstOrNull;
+    final pointsToUse = _pointsToUseAfterPromotion(selectedVoucher);
+    final pointsDiscount = _usePointsForDiscount
+        ? LaundryOrderPricing.pointsDiscountMinorUnits(pointsToUse)
+        : 0;
     context.pushNamed(
       AppRoutes.orderSummary,
       extra: {
@@ -1090,8 +1123,8 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
         'appointment': _appointment,
         'notes': _notesController.text.trim(),
         'usePoints': _provideLaundryDetails && _usePointsForDiscount,
-        'pointsUsedEstimate': _pointsToUse,
-        'pointsDiscountEstimateVnd': _pointsDiscount / 100,
+        'pointsUsedEstimate': pointsToUse,
+        'pointsDiscountEstimateVnd': pointsDiscount / 100,
         'promotionCode': selectedVoucher?.code ?? '',
         'promotionDiscountEstimateVnd': selectedVoucher == null
             ? 0
@@ -1126,6 +1159,9 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
             ..sort(
               (a, b) => _promotionDiscount(b).compareTo(_promotionDiscount(a)),
             );
+          final selectedVoucher = _selectedEligibleVoucher(vouchers);
+          final pointsToUse = _pointsToUseAfterPromotion(selectedVoucher);
+          final pointsDiscount = _pointsDiscountAfterPromotion(selectedVoucher);
           if (_provideLaundryDetails && allPrices.isEmpty) {
             return const Center(child: Text('Hiện chưa có bảng giá khả dụng.'));
           }
@@ -1521,13 +1557,13 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                   _PointsDiscountRow(
                     usePoints: _usePointsForDiscount,
                     availablePoints: _availablePoints,
-                    pointsToUse: _pointsToUse,
+                    pointsToUse: pointsToUse,
                     isLoading: _isLoadingPoints,
                     loadFailed: _pointsLoadFailed,
                     onRetry: _retryLoadingPoints,
                     onChanged: (value) =>
                         setState(() => _usePointsForDiscount = value),
-                    discountAmount: _pointsDiscount,
+                    discountAmount: pointsDiscount,
                   ),
                   if (_usePointsForDiscount ||
                       _selectedEligibleVoucher(vouchers) != null) ...[

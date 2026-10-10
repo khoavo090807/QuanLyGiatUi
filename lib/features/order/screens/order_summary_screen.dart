@@ -79,16 +79,18 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         (_usePoints ? _pointsDiscountEstimateVnd : 0);
     return (_promotionDiscountEstimateVnd + pointsDiscount).clamp(
       0,
-      _estimatedOrderTotalVnd,
+      _estimatedOrderTotalVnd + _totalDeliveryFeeVnd,
     );
   }
 
   num get _estimatedFinalTotalVnd =>
-      (_estimatedOrderTotalVnd - _totalDiscountEstimateVnd).clamp(
+      (_estimatedOrderTotalVnd +
+              _totalDeliveryFeeVnd -
+              _totalDiscountEstimateVnd)
+          .clamp(
         0,
-        _estimatedOrderTotalVnd,
-      ) +
-      _totalDeliveryFeeVnd;
+        _estimatedOrderTotalVnd + _totalDeliveryFeeVnd,
+      );
 
   String _distanceLabel(num meters) =>
       '${(meters / 1000).toStringAsFixed(1)} km';

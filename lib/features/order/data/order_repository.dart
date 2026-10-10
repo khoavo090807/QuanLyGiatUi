@@ -403,10 +403,12 @@ class LaundryOrderRecord {
     final promotionDiscountVnd = _asNum(linkedOrder?['TienGiamKhuyenMai']) ??
         _bookingPromotionDiscount(subtotalVnd, promotion);
     final finalTotalVnd = _asNum(linkedOrder?['ThanhTien']) ??
-        (subtotalVnd - pointsDiscountVnd - promotionDiscountVnd)
-                .clamp(0, double.infinity) +
-            pickupFee +
-            deliveryFee;
+        (subtotalVnd +
+                pickupFee +
+                deliveryFee -
+                pointsDiscountVnd -
+                promotionDiscountVnd)
+            .clamp(0, double.infinity);
 
     return LaundryOrderRecord(
       orderId: _asInt(linkedOrder?['DonHangID']),
@@ -993,11 +995,11 @@ class OrderRepository {
         (_asNum(booking['PickupDeliveryFee']) ?? 0) +
         (_asNum(booking['DeliveryFee']) ?? 0);
     final bookingFinalTotalVnd = (linkedOrder?['ThanhTien'] as num?) ??
-        (bookingSubtotalVnd -
+        (bookingSubtotalVnd +
+                bookingDeliveryFeeVnd -
                 bookingPointsDiscountVnd -
                 bookingPromotionDiscountVnd)
-            .clamp(0, double.infinity) +
-        bookingDeliveryFeeVnd;
+            .clamp(0, double.infinity);
     final linkedOrderId = (linkedOrder?['DonHangID'] as num?)?.toInt();
     var events = <dynamic>[];
     if (linkedOrderId != null) {

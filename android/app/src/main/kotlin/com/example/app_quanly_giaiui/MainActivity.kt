@@ -33,7 +33,9 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun playNotificationTone(isMessage: Boolean) {
-        val durationMs = if (isMessage) 400 else 180
+        // Keep the same notification tone, but make it easier to notice without
+        // letting it ring for too long.
+        val durationMs = if (isMessage) 650 else 450
         val volume = if (isMessage) 100 else 80
         val tone = ToneGenerator(AudioManager.STREAM_NOTIFICATION, volume)
         val started = tone.startTone(ToneGenerator.TONE_PROP_BEEP2, durationMs)
