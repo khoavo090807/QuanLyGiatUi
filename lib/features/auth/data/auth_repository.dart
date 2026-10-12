@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:app_quanly_giaiui/core/config/supabase_config.dart';
+import 'package:app_quanly_giaiui/features/notification/services/notification_service.dart';
 
 class AuthRepository {
   static const passwordSetupCompleteMetadataKey =
@@ -278,7 +279,10 @@ class AuthRepository {
     );
   }
 
-  Future<void> signOut() => _client.auth.signOut();
+  Future<void> signOut() async {
+    await NotificationService.instance.unregisterCurrentDevice();
+    await _client.auth.signOut();
+  }
 
   Future<void> updateCustomerProfile({
     required String fullName,

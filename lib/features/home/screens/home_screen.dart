@@ -9,7 +9,6 @@ import 'package:app_quanly_giaiui/core/widgets/section_header.dart';
 import 'package:app_quanly_giaiui/core/navigation/app_routes.dart';
 import 'package:app_quanly_giaiui/features/auth/data/auth_repository.dart';
 import 'package:app_quanly_giaiui/features/notification/data/notification_repository.dart';
-import 'package:app_quanly_giaiui/features/notification/services/notification_service.dart';
 import 'package:app_quanly_giaiui/features/order/data/order_repository.dart';
 import 'package:app_quanly_giaiui/features/order/domain/cart_store.dart';
 import 'package:app_quanly_giaiui/features/order/widgets/cart_icon_button.dart';
@@ -34,7 +33,6 @@ class HomeScreenState extends State<HomeScreen> {
   final _authRepository = AuthRepository();
   final _notificationRepository = NotificationRepository();
   late Future<_HomeData> _homeData;
-  StreamSubscription<LaundryNotification>? _notificationSubscription;
   Timer? _messageCountTimer;
   bool _refreshingMessageCount = false;
 
@@ -42,12 +40,6 @@ class HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _homeData = _loadHomeData();
-    _notificationSubscription = NotificationService.instance.onNewNotification
-        .listen((notification) {
-          if (notification.type == 'new_message') {
-            _refreshUnreadMessageCount();
-          }
-        });
     _messageCountTimer = Timer.periodic(
       const Duration(seconds: 12),
       (_) => _refreshUnreadMessageCount(),
@@ -433,7 +425,6 @@ class HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     _messageCountTimer?.cancel();
-    _notificationSubscription?.cancel();
     super.dispose();
   }
 

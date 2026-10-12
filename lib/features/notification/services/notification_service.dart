@@ -1,194 +1,141 @@
 import 'dart:async';
+
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:app_quanly_giaiui/features/notification/data/notification_repository.dart';
 
 class NotificationService {
   NotificationService._();
 
   static final NotificationService instance = NotificationService._();
 
-  static const _soundChannel = MethodChannel(
-    'com.example.app_quanly_giaiui/notification_sound',
-  );
-
   final _client = Supabase.instance.client;
-  final _newNotificationController =
-      StreamController<LaundryNotification>.broadcast();
-
-  RealtimeChannel? _channel;
+  final FlutterLocalNotificationsPlugin _localNotifications =
+      FlutterLocalNotificationsPlugin();
   StreamSubscription<AuthState>? _authSubscription;
-  Timer? _pollTimer;
-  int? _subscribedTaiKhoanId;
+  StreamSubscription<String>? _tokenRefreshSubscription;
+  StreamSubscription<RemoteMessage>? _foregroundMessageSubscription;
+  String? _fcmToken;
+  int? _registeredTokenAccountId;
   bool _isInitialized = false;
-  bool _isPolling = false;
-  final _notificationRepository = NotificationRepository();
-  final Set<int> _deliveredNotificationIds = <int>{};
-
-  Stream<LaundryNotification> get onNewNotification =>
-      _newNotificationController.stream;
-
-  void showInApp(LaundryNotification notification) {
-    _newNotificationController.add(notification);
-  }
-
-  static const String _notificationEnabledKey = 'notification_enabled';
-  bool _notificationEnabled = true;
+  static const _pushChannel = AndroidNotificationChannel(
+    'laundry_updates',
+    'Cập nhật đơn hàng và thông báo',
+    description: 'Thông báo mới về đơn hàng và tài khoản của bạn.',
+    importance: Importance.high,
+  );
 
   Future<void> initialize() async {
     if (_isInitialized) return;
 
-    final prefs = await SharedPreferences.getInstance();
-    _notificationEnabled = prefs.getBool(_notificationEnabledKey) ?? true;
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      await _initializeFirebaseMessaging();
+    }
 
     _authSubscription = _client.auth.onAuthStateChange.listen((_) {
-      _subscribeForCurrentUser();
+      _registerTokenForCurrentUser();
     });
 
     _isInitialized = true;
-    await _subscribeForCurrentUser();
+    await _registerTokenForCurrentUser();
   }
 
-  Future<void> _subscribeForCurrentUser() async {
-    final user = _client.auth.currentUser;
-    if (user == null) {
-      _pollTimer?.cancel();
-      _pollTimer = null;
-      await _unsubscribeCurrentChannel();
-      return;
-    }
+  Future<void> _initializeFirebaseMessaging() async {
+    final messaging = FirebaseMessaging.instance;
+    await messaging.requestPermission(alert: true, badge: true, sound: true);
 
-    int? taikhoanId;
-    try {
-      final result = await _client.rpc('get_current_account_id');
-      taikhoanId = result is num ? result.toInt() : null;
-      if (taikhoanId == null) {
-        debugPrint('Realtime notifications not started: no application account id.');
-        return;
-      }
-    } catch (e) {
-      debugPrint('Failed to get taikhoanid: $e');
-      return;
-    }
+    const initializationSettings = InitializationSettings(
+      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+    );
+    await _localNotifications.initialize(settings: initializationSettings);
+    await _localNotifications
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >()
+        ?.createNotificationChannel(_pushChannel);
 
-    if (_subscribedTaiKhoanId == taikhoanId && _channel != null) {
-      return;
-    }
+    _fcmToken = await messaging.getToken();
+    _foregroundMessageSubscription = FirebaseMessaging.onMessage.listen(
+      _showForegroundPush,
+    );
+    _tokenRefreshSubscription = messaging.onTokenRefresh.listen((token) {
+      _fcmToken = token;
+      _registeredTokenAccountId = null;
+      _registerTokenForCurrentUser();
+    });
+  }
 
-    await _unsubscribeCurrentChannel();
+  Future<void> _showForegroundPush(RemoteMessage message) async {
+    final title = message.notification?.title;
+    final body = message.notification?.body;
+    if (title == null && body == null) return;
 
-    // Record notifications already in the inbox so opening the app never
-    // replays old notifications as new popups.
-    try {
-      final existing = await _notificationRepository.getRecentNotifications();
-      _deliveredNotificationIds.addAll(existing.map((item) => item.id));
-    } catch (e) {
-      debugPrint('Could not load the initial notification snapshot: $e');
-    }
-
-    _channel = _client
-        .channel('notifications:${user.id}')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.insert,
-          schema: 'public',
-          table: 'ThongBao',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'TaiKhoanID',
-            value: taikhoanId,
-          ),
-          callback: (payload) {
-            try {
-              _deliverIfNew(LaundryNotification.fromJson(payload.newRecord));
-            } catch (e) {
-              debugPrint('Could not parse a realtime notification: $e');
-            }
-          },
-        )
-        .subscribe((status, error) {
-          if (status == RealtimeSubscribeStatus.subscribed) {
-            debugPrint('Realtime notification channel connected.');
-          } else if (error != null) {
-            debugPrint('Realtime notification channel error: $error');
-          }
-        });
-
-    _subscribedTaiKhoanId = taikhoanId;
-    _pollTimer ??= Timer.periodic(
-      const Duration(seconds: 10),
-      (_) => _pollForNewNotifications(),
+    await _localNotifications.show(
+      id: message.messageId?.hashCode ?? DateTime.now().millisecondsSinceEpoch,
+      title: title ?? 'Thông báo mới',
+      body: body ?? '',
+      notificationDetails: const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'laundry_updates',
+          'Cập nhật đơn hàng và thông báo',
+          channelDescription: 'Thông báo mới về đơn hàng và tài khoản của bạn.',
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+      ),
     );
   }
 
-  Future<void> _pollForNewNotifications() async {
-    if (_isPolling || _subscribedTaiKhoanId == null) return;
-    _isPolling = true;
+  Future<void> _registerTokenForCurrentUser() async {
+    if (_client.auth.currentUser == null || _fcmToken == null) {
+      _registeredTokenAccountId = null;
+      return;
+    }
+
     try {
-      final latest = await _notificationRepository.getRecentNotifications();
-      for (final notification in latest.reversed) {
-        _deliverIfNew(notification);
-      }
-    } catch (e) {
-      debugPrint('Could not check for new notifications: $e');
-    } finally {
-      _isPolling = false;
+      final result = await _client.rpc('get_current_account_id');
+      final accountId = result is num ? result.toInt() : null;
+      final token = _fcmToken;
+      if (accountId == null || token == null || token.isEmpty) return;
+      if (_registeredTokenAccountId == accountId) return;
+
+      await _client.rpc(
+        'register_push_device_token',
+        params: {'p_token': token},
+      );
+      _registeredTokenAccountId = accountId;
+    } catch (error) {
+      debugPrint('Could not register the FCM device token: $error');
     }
   }
 
-  void _deliverIfNew(LaundryNotification notification) {
-    if (!_deliveredNotificationIds.add(notification.id)) return;
-    if (_deliveredNotificationIds.length > 500) {
-      _deliveredNotificationIds.remove(_deliveredNotificationIds.first);
+  /// Remove this installation's token before signing out, so it stops receiving
+  /// private notifications for the account that is being left.
+  Future<void> unregisterCurrentDevice() async {
+    if (defaultTargetPlatform != TargetPlatform.android) return;
+    try {
+      final token = _fcmToken ?? await FirebaseMessaging.instance.getToken();
+      if (token != null && token.isNotEmpty) {
+        await _client.rpc(
+          'unregister_push_device_token',
+          params: {'p_token': token},
+        );
+      }
+    } catch (error) {
+      debugPrint('Could not unregister the FCM device token: $error');
+    } finally {
+      _registeredTokenAccountId = null;
     }
-    _newNotificationController.add(notification);
   }
 
   Future<void> dispose() async {
     await _authSubscription?.cancel();
-    _pollTimer?.cancel();
-    _pollTimer = null;
-    await _unsubscribeCurrentChannel();
-    await _newNotificationController.close();
+    await _tokenRefreshSubscription?.cancel();
+    await _foregroundMessageSubscription?.cancel();
+    _authSubscription = null;
+    _tokenRefreshSubscription = null;
+    _foregroundMessageSubscription = null;
     _isInitialized = false;
-  }
-
-  Future<void> _unsubscribeCurrentChannel() async {
-    await _channel?.unsubscribe();
-    _channel = null;
-    _subscribedTaiKhoanId = null;
-    _deliveredNotificationIds.clear();
-  }
-
-  Future<bool> isNotificationEnabled() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_notificationEnabledKey) ?? true;
-  }
-
-  Future<void> setNotificationEnabled(bool enabled) async {
-    _notificationEnabled = enabled;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_notificationEnabledKey, enabled);
-  }
-
-  bool get notificationEnabled => _notificationEnabled;
-
-  Future<void> playNotificationSound({String? notificationType}) async {
-    if (!_notificationEnabled) return;
-
-    try {
-      if (defaultTargetPlatform == TargetPlatform.android) {
-        await _soundChannel.invokeMethod<void>(
-          'play',
-          {'type': notificationType},
-        );
-      } else {
-        await SystemSound.play(SystemSoundType.alert);
-      }
-    } catch (e) {
-      debugPrint('Failed to play notification sound: $e');
-    }
   }
 }

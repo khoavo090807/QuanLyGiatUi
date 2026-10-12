@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:app_quanly_giaiui/core/constants/app_constants.dart';
 import 'package:app_quanly_giaiui/core/config/supabase_config.dart';
 import 'package:app_quanly_giaiui/core/navigation/app_router.dart';
 import 'package:app_quanly_giaiui/core/theme/app_theme.dart';
 import 'package:app_quanly_giaiui/features/notification/services/notification_service.dart';
-import 'package:app_quanly_giaiui/features/notification/widgets/notification_overlay.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  if (defaultTargetPlatform == TargetPlatform.android) {
+    await Firebase.initializeApp();
+  }
   await SupabaseConfig.initialize();
   runApp(const MainApp());
 }
@@ -45,9 +49,6 @@ class _MainAppState extends State<MainApp> {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
       routerConfig: AppRouter.router,
-      builder: (context, child) => NotificationOverlay(
-        child: child ?? const SizedBox(),
-      ),
     );
   }
 }

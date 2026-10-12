@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "992659218243",
+    "project_id": "notification-supabase-e73fd",
+    "storage_bucket": "notification-supabase-e73fd.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:992659218243:android:6cafb4c05e7b52784fd9f6",
+        "android_client_info": {
+          "package_name": "com.example.app_quanly_giaiui"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBC40tepPT032KF8W0L4CF7dLehqq9pBuQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
