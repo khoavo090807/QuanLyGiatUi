@@ -20,7 +20,13 @@ class NotificationScreen extends StatefulWidget {
 
 class _NotificationScreenState extends State<NotificationScreen> {
   final _repository = NotificationRepository();
-  late Future<List<LaundryNotification>> _notificationsFuture;
+  late Future<void> _notificationsFuture;
+  final ScrollController _scrollController = ScrollController();
+  List<LaundryNotification> _notifications = const [];
+  int _totalNotificationCount = 0;
+  bool _isLoadingMore = false;
+  int _requestVersion = 0;
+  static const _pageSize = 20;
   final Set<int> _selectedNotificationIds = {};
   List<int> _loadedNotificationIds = [];
   bool _isBusy = false;
@@ -30,6 +36,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_onScroll);
     _notificationsFuture = _loadNotifications();
     _realtimeChannel = Supabase.instance.client
         .channel('notification-list:${Supabase.instance.client.auth.currentUser?.id ?? 'anonymous'}')
@@ -38,18 +45,64 @@ class _NotificationScreenState extends State<NotificationScreen> {
     _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) => _refresh());
   }
 
-  Future<List<LaundryNotification>> _loadNotifications() async {
-    final notifications = await _repository.getNotifications();
-    if (mounted) {
-      _loadedNotificationIds = notifications
-          .map((notification) => notification.id)
-          .toList(growable: false);
-      _selectedNotificationIds.retainAll(_loadedNotificationIds);
-      widget.unreadNotificationCount.value = notifications
-          .where((notification) => !notification.isRead)
-          .length;
+  Future<void> _loadNotifications() async {
+    final requestVersion = ++_requestVersion;
+    _isLoadingMore = false;
+    final page = await _repository.getNotificationsPage(
+      page: 0,
+      pageSize: _pageSize,
+    );
+    final unreadCount = await _repository.getUnreadCount();
+    if (!mounted || requestVersion != _requestVersion) return;
+    _notifications = page.notifications;
+    _totalNotificationCount = page.totalCount;
+    _loadedNotificationIds = _notifications
+        .map((notification) => notification.id)
+        .toList(growable: false);
+    _selectedNotificationIds.retainAll(_loadedNotificationIds);
+    widget.unreadNotificationCount.value = unreadCount;
+    _isLoadingMore = false;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _onScroll());
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    if (_scrollController.position.extentAfter < 300) {
+      _loadMoreNotifications();
     }
-    return notifications;
+  }
+
+  Future<void> _loadMoreNotifications() async {
+    if (_isLoadingMore || _notifications.length >= _totalNotificationCount) {
+      return;
+    }
+    final requestVersion = _requestVersion;
+    final nextPage = _notifications.length ~/ _pageSize;
+    setState(() => _isLoadingMore = true);
+    try {
+      final page = await _repository.getNotificationsPage(
+        page: nextPage,
+        pageSize: _pageSize,
+      );
+      if (!mounted || requestVersion != _requestVersion) return;
+      setState(() {
+        _notifications = [..._notifications, ...page.notifications];
+        _totalNotificationCount = page.totalCount;
+        _loadedNotificationIds = _notifications
+            .map((notification) => notification.id)
+            .toList(growable: false);
+      });
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Không thể tải thêm thông báo.')),
+        );
+      }
+    } finally {
+      if (mounted && requestVersion == _requestVersion) {
+        setState(() => _isLoadingMore = false);
+      }
+    }
   }
 
   Future<void> _refresh() async {
@@ -180,7 +233,9 @@ class _NotificationScreenState extends State<NotificationScreen> {
       }
     }
 
-    if (mounted && notification.messageId != null) {
+    if (mounted && notification.promotionCode != null) {
+      context.pushNamed(AppRoutes.vouchers, extra: notification.promotionCode);
+    } else if (mounted && notification.messageId != null) {
       try {
         final thread = await MessageRepository().getThreadForMessage(notification.messageId!);
         if (mounted) context.pushNamed(AppRoutes.chat, extra: thread);
@@ -222,6 +277,9 @@ class _NotificationScreenState extends State<NotificationScreen> {
   @override
   void dispose() {
     _refreshTimer?.cancel();
+    _scrollController
+      ..removeListener(_onScroll)
+      ..dispose();
     final channel = _realtimeChannel;
     if (channel != null) Supabase.instance.client.removeChannel(channel);
     super.dispose();
@@ -289,11 +347,11 @@ class _NotificationScreenState extends State<NotificationScreen> {
           ),
         ],
       ),
-      body: FutureBuilder<List<LaundryNotification>>(
+      body: FutureBuilder<void>(
         future: _notificationsFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting &&
-              !snapshot.hasData) {
+              _notifications.isEmpty) {
             return const Center(child: CircularProgressIndicator());
           }
           if (snapshot.hasError) {
@@ -309,7 +367,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
             );
           }
 
-          final notifications = snapshot.data ?? const <LaundryNotification>[];
+          final notifications = _notifications;
           if (notifications.isEmpty) {
             return RefreshIndicator(
               onRefresh: _refresh,
@@ -329,11 +387,23 @@ class _NotificationScreenState extends State<NotificationScreen> {
           return RefreshIndicator(
             onRefresh: _refresh,
             child: ListView.separated(
+              controller: _scrollController,
               physics: const AlwaysScrollableScrollPhysics(),
-              itemCount: notifications.length,
+              itemCount: notifications.length + (_isLoadingMore ? 1 : 0),
               separatorBuilder: (context, index) =>
                   const Divider(height: 1, color: AppColors.divider),
               itemBuilder: (context, index) {
+                if (index == notifications.length && _isLoadingMore) {
+                  return const Padding(
+                    padding: EdgeInsets.all(20),
+                    child: Center(
+                      child: SizedBox.square(
+                        dimension: 24,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                  );
+                }
                 final notification = notifications[index];
                 final isSelected = _selectedNotificationIds.contains(
                   notification.id,
@@ -342,8 +412,8 @@ class _NotificationScreenState extends State<NotificationScreen> {
                   tileColor: isSelected
                       ? AppColors.primaryLight
                       : notification.isRead
-                      ? AppColors.surface
-                      : AppColors.primaryExtraLight,
+                          ? AppColors.surface
+                          : AppColors.primaryExtraLight,
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 18,
                     vertical: 8,
@@ -358,15 +428,29 @@ class _NotificationScreenState extends State<NotificationScreen> {
                   trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                     PopupMenuButton<String>(
                       enabled: !_isBusy,
-                      onSelected: (action) => _handleNotificationAction(notification, action),
+                      onSelected: (action) =>
+                          _handleNotificationAction(notification, action),
                       itemBuilder: (_) => [
-                        PopupMenuItem(value: notification.isRead ? 'unread' : 'read', child: Text(notification.isRead ? 'Đánh dấu chưa đọc' : 'Đánh dấu đã đọc')),
-                        const PopupMenuItem(value: 'delete', child: Text('Xóa thông báo')),
+                        PopupMenuItem(
+                          value: notification.isRead ? 'unread' : 'read',
+                          child: Text(notification.isRead
+                              ? 'Đánh dấu chưa đọc'
+                              : 'Đánh dấu đã đọc'),
+                        ),
+                        const PopupMenuItem(
+                          value: 'delete',
+                          child: Text('Xóa thông báo'),
+                        ),
                       ],
                     ),
                     Checkbox(
                       value: isSelected,
-                      onChanged: _isBusy ? null : (selected) => _toggleSelection(notification.id, selected),
+                      onChanged: _isBusy
+                          ? null
+                          : (selected) => _toggleSelection(
+                              notification.id,
+                              selected,
+                            ),
                     ),
                   ]),
                   title: Text(
@@ -411,6 +495,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
   IconData _iconFor(String? type) {
     final normalized = (type ?? '').toLowerCase();
+    if (normalized.contains('promotion')) return Icons.local_offer_outlined;
     if (normalized.contains('message')) return Icons.chat_bubble_outline;
     if (normalized.contains('giao')) return Icons.local_shipping_outlined;
     if (normalized.contains('thanh')) return Icons.payments_outlined;

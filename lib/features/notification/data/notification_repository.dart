@@ -24,6 +24,14 @@ class LaundryNotification {
   final int? bookingId;
   final String? type;
 
+  String? get promotionCode {
+    if (!(type ?? '').toLowerCase().contains('promotion')) return null;
+    return RegExp(r'\bMã\s+(.+?)\s+giảm\b', caseSensitive: false)
+        .firstMatch(message)
+        ?.group(1)
+        ?.trim();
+  }
+
   factory LaundryNotification.fromJson(Map<String, dynamic> json) {
     // Handle both lowercase (from view select) and capitalized (from realtime table insert)
     return LaundryNotification(
@@ -47,6 +55,28 @@ class NotificationRepository {
     : _client = client ?? Supabase.instance.client;
 
   final SupabaseClient _client;
+
+  Future<NotificationPage> getNotificationsPage({
+    required int page,
+    int pageSize = 20,
+  }) async {
+    final response = await _client
+        .from('thongbao')
+        .select(
+          'thongbaoid,tieude,noidung,thoigiangui,dadoc,donhangid,loaithongbao,tinnhanid,bookingid',
+        )
+        .order('thoigiangui', ascending: false)
+        .order('thongbaoid', ascending: false)
+        .range(page * pageSize, page * pageSize + pageSize - 1)
+        .count(CountOption.exact);
+    final rows = response.data as List<dynamic>;
+    return NotificationPage(
+      notifications: rows
+          .map((row) => LaundryNotification.fromJson(row as Map<String, dynamic>))
+          .toList(growable: false),
+      totalCount: response.count,
+    );
+  }
 
   Future<List<LaundryNotification>> getNotifications() async {
     final rows = await _client
@@ -76,20 +106,22 @@ class NotificationRepository {
   }
 
   Future<int> getUnreadCount() async {
-    final rows = await _client
+    final response = await _client
         .from('thongbao')
         .select('thongbaoid')
-        .eq('dadoc', false);
-    return (rows as List<dynamic>).length;
+        .eq('dadoc', false)
+        .count(CountOption.exact);
+    return response.count;
   }
 
   Future<int> getUnreadMessageCount() async {
-    final rows = await _client
+    final response = await _client
         .from('thongbao')
         .select('thongbaoid')
         .eq('loaithongbao', 'new_message')
-        .eq('dadoc', false);
-    return (rows as List<dynamic>).length;
+        .eq('dadoc', false)
+        .count(CountOption.exact);
+    return response.count;
   }
 
   Future<void> markRead(int notificationId) async {
@@ -150,4 +182,11 @@ class NotificationRepository {
     await _client.from('ThongBao').delete().eq('ThongBaoID', notificationId);
   }
 
+}
+
+class NotificationPage {
+  const NotificationPage({required this.notifications, required this.totalCount});
+
+  final List<LaundryNotification> notifications;
+  final int totalCount;
 }

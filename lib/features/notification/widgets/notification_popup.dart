@@ -68,7 +68,9 @@ class _NotificationPopupState extends State<NotificationPopup>
       // Navigation should still work if updating the read state fails.
     }
 
-    if (notification.messageId != null) {
+    if (notification.promotionCode != null) {
+      router.pushNamed(AppRoutes.vouchers, extra: notification.promotionCode);
+    } else if (notification.messageId != null) {
       try {
         final thread = await MessageRepository().getThreadForMessage(notification.messageId!);
         router.pushNamed(AppRoutes.chat, extra: thread);
@@ -177,6 +179,7 @@ class _NotificationPopupState extends State<NotificationPopup>
 
   IconData _iconFor(String? type) {
     final normalized = (type ?? '').toLowerCase();
+    if (normalized.contains('promotion')) return Icons.local_offer_outlined;
     if (normalized.contains('message')) return Icons.chat_bubble_outline;
     if (normalized.contains('order_created') || normalized.contains('booking')) {
       return Icons.shopping_bag_outlined;

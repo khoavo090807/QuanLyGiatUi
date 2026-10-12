@@ -6,7 +6,9 @@ import 'package:app_quanly_giaiui/core/theme/app_typography.dart';
 import 'package:app_quanly_giaiui/features/loyalty/data/loyalty_repository.dart';
 
 class VouchersScreen extends StatefulWidget {
-  const VouchersScreen({super.key});
+  const VouchersScreen({this.highlightCode, super.key});
+
+  final String? highlightCode;
 
   @override
   State<VouchersScreen> createState() => _VouchersScreenState();
@@ -15,6 +17,8 @@ class VouchersScreen extends StatefulWidget {
 class _VouchersScreenState extends State<VouchersScreen> {
   final _repository = LoyaltyRepository();
   late Future<List<LoyaltyVoucher>> _vouchersFuture;
+  final GlobalKey _highlightedVoucherKey = GlobalKey();
+  bool _hasScrolledToHighlightedVoucher = false;
 
   @override
   void initState() {
@@ -58,6 +62,28 @@ class _VouchersScreenState extends State<VouchersScreen> {
           }
 
           final vouchers = snapshot.data!;
+          final highlightCode = widget.highlightCode?.trim();
+          final highlightedVoucher = highlightCode == null || highlightCode.isEmpty
+              ? null
+              : vouchers.where((voucher) =>
+                    voucher.code.toLowerCase() == highlightCode.toLowerCase(),
+                  ).firstOrNull;
+
+          if (highlightedVoucher != null && !_hasScrolledToHighlightedVoucher) {
+            _hasScrolledToHighlightedVoucher = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              final targetContext = _highlightedVoucherKey.currentContext;
+              if (targetContext != null) {
+                Scrollable.ensureVisible(
+                  targetContext,
+                  duration: const Duration(milliseconds: 450),
+                  curve: Curves.easeInOut,
+                  alignment: 0.35,
+                );
+              }
+            });
+          }
+
           return RefreshIndicator(
             onRefresh: () async {
               final future = _loadVouchers();
@@ -72,6 +98,8 @@ class _VouchersScreenState extends State<VouchersScreen> {
               children: [
                 _buildHeader(),
                 const SizedBox(height: 24),
+                if (highlightCode != null && highlightCode.isNotEmpty && highlightedVoucher == null)
+                  _buildUnavailablePromotionNotice(),
                 if (vouchers.isEmpty)
                   Center(
                     child: Padding(
@@ -95,7 +123,15 @@ class _VouchersScreenState extends State<VouchersScreen> {
                     ),
                   )
                 else
-                  ...vouchers.map(_buildVoucher),
+                  ...vouchers.map((voucher) {
+                    final isHighlighted =
+                        voucher.code.toLowerCase() == highlightCode?.toLowerCase();
+                    return _buildVoucher(
+                      voucher,
+                      key: isHighlighted ? _highlightedVoucherKey : null,
+                      highlighted: isHighlighted,
+                    );
+                  }),
               ],
             ),
           );
@@ -154,7 +190,24 @@ class _VouchersScreenState extends State<VouchersScreen> {
     );
   }
 
-  Widget _buildVoucher(LoyaltyVoucher voucher) {
+  Widget _buildUnavailablePromotionNotice() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.error.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+      ),
+      child: const Text('Mã giảm giá này không còn hiệu lực.'),
+    );
+  }
+
+  Widget _buildVoucher(
+    LoyaltyVoucher voucher, {
+    Key? key,
+    bool highlighted = false,
+  }) {
     final isPercent = voucher.discountType == 'Phần trăm';
     final discount = isPercent
         ? '${voucher.discountValue.toStringAsFixed(0)}%'
@@ -164,12 +217,25 @@ class _VouchersScreenState extends State<VouchersScreen> {
         : '${voucher.condition ?? ''} Từ ${FormatterUtils.formatVnd(voucher.minimumOrder!)}';
 
     return Container(
+      key: key,
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.divider),
+        border: Border.all(
+          color: highlighted ? AppColors.primary : AppColors.divider,
+          width: highlighted ? 2.5 : 1,
+        ),
+        boxShadow: highlighted
+            ? [
+                BoxShadow(
+                  color: AppColors.primary.withValues(alpha: 0.3),
+                  blurRadius: 14,
+                  spreadRadius: 2,
+                ),
+              ]
+            : null,
       ),
       child: Row(
         children: [

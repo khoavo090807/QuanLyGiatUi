@@ -449,6 +449,16 @@ class LaundryOrderRecord {
   }
 }
 
+class LaundryOrderHistoryPage {
+  const LaundryOrderHistoryPage({
+    required this.orders,
+    required this.totalCount,
+  });
+
+  final List<LaundryOrderRecord> orders;
+  final int totalCount;
+}
+
 class LaundryOrderStatusEvent {
   const LaundryOrderStatusEvent({
     required this.previousStatus,
@@ -708,6 +718,86 @@ class OrderRepository {
       ..sort((left, right) => right.createdAt.compareTo(left.createdAt));
   }
 
+  Future<LaundryOrderHistoryPage> getCustomerHistoryPage({
+    required String statusGroup,
+    required int offset,
+    int limit = 20,
+  }) async {
+    if (_client.auth.currentUser == null) {
+      throw const AuthException('Bạn cần đăng nhập để xem lịch sử.');
+    }
+
+    final response = await _client.rpc(
+      'get_customer_history_page',
+      params: {
+        'p_status': statusGroup,
+        'p_offset': offset,
+        'p_limit': limit,
+      },
+    );
+    final result = Map<String, dynamic>.from(response as Map);
+    final descriptors = (result['items'] as List<dynamic>? ?? const [])
+        .cast<Map<String, dynamic>>();
+    final orderIds = descriptors
+        .where((item) => item['source'] == 'order')
+        .map((item) => (item['record_id'] as num).toInt())
+        .toList(growable: false);
+    final bookingIds = descriptors
+        .where((item) => item['source'] == 'booking')
+        .map((item) => (item['record_id'] as num).toInt())
+        .toList(growable: false);
+
+    final records = await Future.wait([
+      orderIds.isEmpty
+          ? Future.value(const <LaundryOrderRecord>[])
+          : _getCustomerOrdersByIds(orderIds),
+      bookingIds.isEmpty
+          ? Future.value(const <LaundryOrderRecord>[])
+          : _getBookings(includeDetails: true, onlyBookingIds: bookingIds),
+    ]);
+    final ordersById = {
+      for (final order in records[0]) order.orderId!: order,
+    };
+    final bookingsById = {
+      for (final booking in records[1]) booking.bookingId!: booking,
+    };
+    final orderedRecords = descriptors
+        .map((item) => item['source'] == 'order'
+            ? ordersById[(item['record_id'] as num).toInt()]
+            : bookingsById[(item['record_id'] as num).toInt()])
+        .whereType<LaundryOrderRecord>()
+        .toList(growable: false);
+
+    return LaundryOrderHistoryPage(
+      orders: orderedRecords,
+      totalCount: (result['total_count'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  Future<List<LaundryOrderRecord>> _getCustomerOrdersByIds(
+    List<int> orderIds,
+  ) async {
+    final rows = await _client
+        .from('DonHang')
+        .select(
+          'DonHangID,BookingID,MaDonHang,TrangThai,TongTien,DiemSuDung,'
+          'TienGiamDoDiem,TienGiamKhuyenMai,ThanhTien,NgayTao,'
+          'KhuyenMai(MaKhuyenMai),'
+          'Booking(BookingID,MaBooking,HinhThucNhanDo,HinhThucGiaoDo,'
+          'DiaChiNhan,DiaChiGiao,PickupDistanceMeters,PickupDeliveryFee,'
+          'DeliveryDistanceMeters,DeliveryFee,NgayHen,GioHen,GhiChu,'
+          'PhuongThucThanhToan,DiemSuDung,TienGiamDoDiem,'
+          'KhuyenMai(MaKhuyenMai,LoaiKhuyenMai,GiaTriGiam,'
+          'GiaTriDonToiThieu,MucGiamToiDa)),'
+          'ChiTietDonHang(SoLuong,KhoiLuong,DonGia,ThanhTien,'
+          'DichVu(TenDichVu),LoaiDoGiat(TenLoaiDoGiat),DonViTinh(KyHieu))',
+        )
+        .inFilter('DonHangID', orderIds);
+    return (rows as List<dynamic>)
+        .map((row) => LaundryOrderRecord.fromJson(row as Map<String, dynamic>))
+        .toList(growable: false);
+  }
+
   Future<List<LaundryOrderRecord>> getStaffQueue() async {
     final results = await Future.wait([
       getStaffOrders(),
@@ -720,7 +810,10 @@ class OrderRepository {
       ..sort((left, right) => right.createdAt.compareTo(left.createdAt));
   }
 
-  Future<List<LaundryOrderRecord>> _getBookings({bool includeDetails = false}) async {
+  Future<List<LaundryOrderRecord>> _getBookings({
+    bool includeDetails = false,
+    List<int>? onlyBookingIds,
+  }) async {
     final user = _client.auth.currentUser;
     if (user == null) {
       return const [];
@@ -734,10 +827,14 @@ class OrderRepository {
               'NgayHen,GioHen,GhiChu,PhuongThucThanhToan,'
               'DiemSuDung,TienGiamDoDiem,KhuyenMai(MaKhuyenMai,LoaiKhuyenMai,GiaTriGiam,GiaTriDonToiThieu,MucGiamToiDa)'
           : 'BookingID,MaBooking,TrangThai,NgayTao';
-      final bookings = await _client
+      var bookingQuery = _client
           .from('Booking')
-          .select(bookingSelect)
-          .order('NgayTao', ascending: false);
+          .select(bookingSelect);
+      if (onlyBookingIds != null) {
+        if (onlyBookingIds.isEmpty) return const [];
+        bookingQuery = bookingQuery.inFilter('BookingID', onlyBookingIds);
+      }
+      final bookings = await bookingQuery.order('NgayTao', ascending: false);
 
       final bookingIds = (bookings as List<dynamic>)
           .map((b) => _asInt((b as Map<String, dynamic>)['BookingID']))

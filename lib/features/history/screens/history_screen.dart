@@ -23,10 +23,18 @@ class _HistoryScreenState extends State<HistoryScreen>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver, AutomaticKeepAliveClientMixin {
   late final TabController _tabController;
   final _repository = OrderRepository();
-  late Future<List<LaundryOrderRecord>> _ordersFuture;
+  late Future<List<LaundryOrderHistoryPage>> _ordersFuture;
   bool _isCancelling = false;
   Timer? _autoRefreshTimer;
   bool _isVisible = true;
+  final List<List<LaundryOrderRecord>> _ordersByTab = [[], [], []];
+  final List<int> _totalCountByTab = [0, 0, 0];
+  final List<bool> _isLoadingMoreByTab = [false, false, false];
+  final List<bool> _hasLoadMoreErrorByTab = [false, false, false];
+  final List<int> _requestVersionByTab = [0, 0, 0];
+  final List<ScrollController> _tabScrollControllers = [];
+  static const _pageSize = 20;
+  static const _statusGroups = ['processing', 'completed', 'cancelled'];
 
   @override
   bool get wantKeepAlive => true;
@@ -36,7 +44,13 @@ class _HistoryScreenState extends State<HistoryScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _tabController = TabController(length: 3, vsync: this);
-    _loadHistory();
+    _ordersFuture = _fetchHistory();
+    for (var tab = 0; tab < 3; tab++) {
+      final tabIndex = tab;
+      _tabScrollControllers.add(
+        ScrollController()..addListener(() => _onTabScroll(tabIndex)),
+      );
+    }
     _startAutoRefresh();
     widget.onVisibilityChanged?.call(setVisibility);
   }
@@ -65,8 +79,92 @@ class _HistoryScreenState extends State<HistoryScreen>
 
   void _loadHistory() {
     setState(() {
-      _ordersFuture = _repository.getCustomerHistory();
+      _ordersFuture = _fetchHistory(preserveLoaded: true);
     });
+  }
+
+  Future<List<LaundryOrderHistoryPage>> _fetchHistory({
+    bool preserveLoaded = false,
+  }) async {
+    for (var tab = 0; tab < _requestVersionByTab.length; tab++) {
+      _requestVersionByTab[tab]++;
+    }
+    final pages = await Future.wait(
+      List.generate(3, (tab) async {
+        final targetCount = preserveLoaded && _ordersByTab[tab].length > _pageSize
+            ? _ordersByTab[tab].length
+            : _pageSize;
+        final loaded = <LaundryOrderRecord>[];
+        var totalCount = 0;
+        do {
+          final page = await _repository.getCustomerHistoryPage(
+            statusGroup: _statusGroups[tab],
+            offset: loaded.length,
+            limit: _pageSize,
+          );
+          totalCount = page.totalCount;
+          loaded.addAll(page.orders);
+          if (!preserveLoaded || page.orders.isEmpty) break;
+        } while (loaded.length < targetCount && loaded.length < totalCount);
+        return LaundryOrderHistoryPage(
+          orders: loaded,
+          totalCount: totalCount,
+        );
+      }),
+    );
+    if (mounted) {
+      for (var tab = 0; tab < pages.length; tab++) {
+        _ordersByTab[tab] = pages[tab].orders;
+        _totalCountByTab[tab] = pages[tab].totalCount;
+        _isLoadingMoreByTab[tab] = false;
+        _hasLoadMoreErrorByTab[tab] = false;
+      }
+    }
+    return pages;
+  }
+
+  void _onTabScroll(int tab) {
+    final controller = _tabScrollControllers[tab];
+    if (!controller.hasClients || controller.position.extentAfter >= 300 ||
+        _isLoadingMoreByTab[tab] ||
+        _ordersByTab[tab].length >= _totalCountByTab[tab]) {
+      return;
+    }
+    _loadMore(tab);
+  }
+
+  Future<void> _loadMore(int tab) async {
+    if (_isLoadingMoreByTab[tab] ||
+        _ordersByTab[tab].length >= _totalCountByTab[tab]) {
+      return;
+    }
+    final requestVersion = _requestVersionByTab[tab];
+    setState(() {
+      _isLoadingMoreByTab[tab] = true;
+      _hasLoadMoreErrorByTab[tab] = false;
+    });
+    try {
+      final page = await _repository.getCustomerHistoryPage(
+        statusGroup: _statusGroups[tab],
+        offset: _ordersByTab[tab].length,
+        limit: _pageSize,
+      );
+      if (!mounted || requestVersion != _requestVersionByTab[tab]) return;
+      setState(() {
+        _ordersByTab[tab] = [..._ordersByTab[tab], ...page.orders];
+        _totalCountByTab[tab] = page.orders.isEmpty
+            ? _ordersByTab[tab].length
+            : page.totalCount;
+      });
+    } catch (_) {
+      if (mounted && requestVersion == _requestVersionByTab[tab]) {
+        setState(() => _hasLoadMoreErrorByTab[tab] = true);
+      }
+    } finally {
+      if (mounted && requestVersion == _requestVersionByTab[tab]) {
+        setState(() => _isLoadingMoreByTab[tab] = false);
+      }
+    }
   }
 
   @override
@@ -74,12 +172,15 @@ class _HistoryScreenState extends State<HistoryScreen>
     WidgetsBinding.instance.removeObserver(this);
     _autoRefreshTimer?.cancel();
     _tabController.dispose();
+    for (final controller in _tabScrollControllers) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
   Future<void> _refresh() async {
     setState(() {
-      _ordersFuture = _repository.getCustomerHistory();
+      _ordersFuture = _fetchHistory(preserveLoaded: true);
     });
     await _ordersFuture;
   }
@@ -122,21 +223,6 @@ class _HistoryScreenState extends State<HistoryScreen>
     }
   }
 
-  bool _isCancelled(LaundryOrderRecord order) => order.status == 'Đã hủy';
-
-  bool _isCompleted(LaundryOrderRecord order) =>
-      const {'Đã giao', 'Đã thanh toán', 'Hoàn thành'}.contains(order.status);
-
-  List<LaundryOrderRecord> _filter(List<LaundryOrderRecord> orders, int tab) {
-    return orders
-        .where((order) {
-          if (tab == 0) return !_isCancelled(order) && !_isCompleted(order);
-          if (tab == 1) return _isCompleted(order);
-          return _isCancelled(order);
-        })
-        .toList(growable: false);
-  }
-
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -155,7 +241,7 @@ class _HistoryScreenState extends State<HistoryScreen>
           ],
         ),
       ),
-      body: FutureBuilder<List<LaundryOrderRecord>>(
+      body: FutureBuilder<List<LaundryOrderHistoryPage>>(
         future: _ordersFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting &&
@@ -168,21 +254,21 @@ class _HistoryScreenState extends State<HistoryScreen>
               message: 'Không tải được lịch sử đơn hàng.',
               action: TextButton(
                 onPressed: () => setState(() {
-                  _ordersFuture = _repository.getCustomerHistory();
+                  _ordersFuture = _fetchHistory();
                 }),
                 child: const Text('Thử lại'),
               ),
             );
           }
 
-          final orders = snapshot.data ?? const <LaundryOrderRecord>[];
           return TabBarView(
             controller: _tabController,
             children: List.generate(3, (tab) {
-              final filtered = _filter(orders, tab);
+              final orders = _ordersByTab[tab];
+              final hasMore = orders.length < _totalCountByTab[tab];
               return RefreshIndicator(
                 onRefresh: _refresh,
-                child: filtered.isEmpty
+                child: orders.isEmpty
                     ? ListView(
                         physics: const AlwaysScrollableScrollPhysics(),
                         children: const [
@@ -194,35 +280,62 @@ class _HistoryScreenState extends State<HistoryScreen>
                         ],
                       )
                     : ListView.separated(
+                        controller: _tabScrollControllers[tab],
                         physics: const AlwaysScrollableScrollPhysics(),
                         padding: const EdgeInsets.all(16),
-                        itemCount: filtered.length,
+                        itemCount: orders.length + (hasMore ? 1 : 0),
                         separatorBuilder: (context, index) =>
                             const SizedBox(height: 10),
-                        itemBuilder: (context, index) => _OrderCard(
-                          order: filtered[index],
-                          onViewDetails: () {
-                            final order = filtered[index];
-                            if (order.orderId != null) {
-                              context.pushNamed(
-                                AppRoutes.trackingDetail,
-                                pathParameters: {
-                                  'id': order.orderId.toString(),
-                                },
-                              );
-                            } else if (order.bookingId != null) {
-                              context.pushNamed(
-                                AppRoutes.trackingDetail,
-                                pathParameters: {
-                                  'id': 'booking_${order.bookingId}',
-                                },
+                        itemBuilder: (context, index) {
+                          if (index == orders.length) {
+                            if (_isLoadingMoreByTab[tab]) {
+                              return const Padding(
+                                padding: EdgeInsets.all(20),
+                                child: Center(
+                                  child: SizedBox.square(
+                                    dimension: 24,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  ),
+                                ),
                               );
                             }
-                          },
-                          onCancelBooking: _isCancelling
-                              ? null
-                              : () => _cancelBooking(filtered[index]),
-                        ),
+                            if (_hasLoadMoreErrorByTab[tab]) {
+                              return Center(
+                                child: TextButton(
+                                  onPressed: () => _loadMore(tab),
+                                  child: const Text('Thử tải thêm'),
+                                ),
+                              );
+                            }
+                            return const SizedBox(height: 20);
+                          }
+                          final order = orders[index];
+                          return _OrderCard(
+                            order: order,
+                            onViewDetails: () {
+                              if (order.orderId != null) {
+                                context.pushNamed(
+                                  AppRoutes.trackingDetail,
+                                  pathParameters: {
+                                    'id': order.orderId.toString(),
+                                  },
+                                );
+                              } else if (order.bookingId != null) {
+                                context.pushNamed(
+                                  AppRoutes.trackingDetail,
+                                  pathParameters: {
+                                    'id': 'booking_${order.bookingId}',
+                                  },
+                                );
+                              }
+                            },
+                            onCancelBooking: _isCancelling
+                                ? null
+                                : () => _cancelBooking(order),
+                          );
+                        },
                       ),
               );
             }),

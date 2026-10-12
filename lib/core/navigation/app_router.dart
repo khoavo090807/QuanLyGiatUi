@@ -280,7 +280,9 @@ class AppRouter {
       GoRoute(
         path: '/vouchers',
         name: AppRoutes.vouchers,
-        builder: (context, state) => const VouchersScreen(),
+        builder: (context, state) => VouchersScreen(
+          highlightCode: state.extra as String?,
+        ),
       ),
       GoRoute(
         path: AppRoutes.staffQueuePath,
