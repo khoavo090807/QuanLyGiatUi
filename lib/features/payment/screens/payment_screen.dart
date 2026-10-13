@@ -167,12 +167,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     text:
                         'Yêu cầu thanh toán sẽ ở trạng thái chờ cho đến khi nhân viên xác nhận.',
                   ),
-                  const SizedBox(height: 12),
-                  const _PaymentMessage(
-                    icon: Icons.account_balance_wallet_outlined,
-                    text:
-                        'MoMo chưa khả dụng: cần cấu hình merchant và callback đối soát trước khi bật.',
-                  ),
                 ],
                 if (_errorMessage != null) ...[
                   const SizedBox(height: 16),

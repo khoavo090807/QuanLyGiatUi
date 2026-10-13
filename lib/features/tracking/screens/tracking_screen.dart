@@ -5,6 +5,7 @@ import 'package:app_quanly_giaiui/core/theme/app_colors.dart';
 import 'package:app_quanly_giaiui/core/theme/app_typography.dart';
 import 'package:app_quanly_giaiui/core/utils/formatter_utils.dart';
 import 'package:app_quanly_giaiui/features/order/data/order_repository.dart';
+import 'package:app_quanly_giaiui/features/payment/widgets/bank_transfer_qr_panel.dart';
 
 class TrackingScreen extends StatefulWidget {
   const TrackingScreen({this.orderId, this.bookingId, super.key})
@@ -212,11 +213,18 @@ class _TrackingScreenState extends State<TrackingScreen> {
                     Text(
                       details.paymentMethod == null
                           ? 'Chưa có giao dịch thanh toán được ghi nhận.'
+                          : details.paymentMethod == 'Chuyển khoản'
+                          ? 'Mã QR theo số tiền trên hóa đơn hiển thị bên dưới. Trạng thái sẽ tự cập nhật khi nhận được xác nhận chuyển khoản.'
                           : 'Thanh toán sẽ được thực hiện khi cửa hàng hoàn tất kiểm nhận và hóa đơn được tạo.',
                       style: const TextStyle(color: AppColors.textSecondary),
                     ),
                   ],
                 ),
+                if (widget.orderId != null && details.paymentMethod == 'Chuyển khoản')
+                  BankTransferQrPanel(
+                    orderId: int.parse(widget.orderId!),
+                    orderStatus: order.status,
+                  ),
                 const SizedBox(height: 20),
                 if (details.pickupMethod != null) ...[
                   _SummarySection(

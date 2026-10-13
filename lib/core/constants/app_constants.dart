@@ -15,6 +15,10 @@ class AppConstants {
   
   // API (Placeholder for future)
   static const String baseUrl = 'https://api.skylaundry.vn/v1';
+  static const String paymentConfigUrl = String.fromEnvironment(
+    'PAYMENT_CONFIG_URL',
+    defaultValue: 'https://sky-laundry.vercel.app/api/v1/payment-config',
+  );
   
   // Timeout
   static const int connectionTimeout = 30000;

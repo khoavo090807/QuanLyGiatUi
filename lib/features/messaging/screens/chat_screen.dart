@@ -99,8 +99,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   Future<void> _send() async {
     final content = _textController.text.trim();
     if (content.isEmpty || _sending) return;
-    if (content.length > 2000) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Tin nhắn tối đa 2.000 ký tự.')));
+    if (content.length > 1000) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Tin nhắn tối đa 1.000 ký tự.')));
       return;
     }
     setState(() => _sending = true);

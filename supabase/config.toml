@@ -7,6 +7,9 @@ project_id = "app_quanly_giaiui"
 [functions.delivery-fee-quote]
 verify_jwt = true
 
+[functions.chat-encryption]
+verify_jwt = true
+
 [api]
 enabled = true
 # Port to use for the API URL.
