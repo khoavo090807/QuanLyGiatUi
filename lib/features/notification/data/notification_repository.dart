@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:app_quanly_giaiui/core/utils/database_timestamp.dart';
+import 'package:app_quanly_giaiui/core/utils/formatter_utils.dart';
 
 class LaundryNotification {
   const LaundryNotification({
@@ -37,7 +38,9 @@ class LaundryNotification {
     return LaundryNotification(
       id: (json['thongbaoid'] ?? json['ThongBaoID'] as num).toInt(),
       title: (json['tieude'] ?? json['TieuDe']) as String,
-      message: (json['noidung'] ?? json['NoiDung']) as String,
+      message: FormatterUtils.formatOrderCodesInText(
+        (json['noidung'] ?? json['NoiDung']) as String,
+      ),
       sentAt: parseDatabaseTimestamp(
         (json['thoigiangui'] ?? json['ThoiGianGui']) as String,
       ),

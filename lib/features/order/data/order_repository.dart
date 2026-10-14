@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:app_quanly_giaiui/core/utils/formatter_utils.dart';
 import 'package:app_quanly_giaiui/features/order/domain/cart_item.dart';
 import 'package:app_quanly_giaiui/features/order/data/delivery_fee_quote.dart';
 
@@ -355,7 +356,7 @@ class LaundryOrderRecord {
       promotionDiscountVnd: _asNum(json['TienGiamKhuyenMai']),
       promotionCode: _asString(promotion?['MaKhuyenMai']),
       finalTotalVnd: _asNum(json['ThanhTien']),
-      orderNumber: json['MaDonHang'] as String,
+      orderNumber: FormatterUtils.formatOrderCode(json['MaDonHang'] as String),
       status: json['TrangThai'] as String,
       totalVnd: _asNum(json['ThanhTien']) ?? 0,
       createdAt: DateTime.parse(json['NgayTao'] as String),
@@ -431,7 +432,9 @@ class LaundryOrderRecord {
       promotionDiscountVnd: promotionDiscountVnd,
       promotionCode: _asString(promotion?['MaKhuyenMai']),
       finalTotalVnd: finalTotalVnd,
-      orderNumber: json['MaBooking'] as String,
+      orderNumber: linkedOrder?['MaDonHang'] is String
+          ? FormatterUtils.formatOrderCode(linkedOrder!['MaDonHang'] as String)
+          : json['MaBooking'] as String,
       status:
           linkedOrder?['TrangThai'] as String? ?? bookingStatus.displayValue,
       totalVnd: finalTotalVnd,

@@ -3,6 +3,25 @@ import 'package:intl/intl.dart';
 class FormatterUtils {
   FormatterUtils._();
 
+  /// Normalize numeric order codes to the display format DH + 8 digits.
+  /// Non-order codes (such as booking codes) are returned unchanged.
+  static String formatOrderCode(String code) {
+    final match = RegExp(r'^DH(\d+)$', caseSensitive: false).firstMatch(code);
+    if (match == null) return code;
+
+    return 'DH${match.group(1)!.padLeft(8, '0')}';
+  }
+
+  /// Normalize order codes embedded in server-generated notification text.
+  static String formatOrderCodesInText(String text) => text.replaceAllMapped(
+    RegExp(r'\bDH\d+\b', caseSensitive: false),
+    (match) => formatOrderCode(match.group(0)!),
+  );
+
+  /// Build the canonical display code when only the numeric order ID is known.
+  static String formatOrderId(int orderId) =>
+      'DH${orderId.toString().padLeft(8, '0')}';
+
   /// Format money (e.g., 100000 -> "100.000 đ")
   static String formatCurrency(double amount) {
     return formatVnd(amount);

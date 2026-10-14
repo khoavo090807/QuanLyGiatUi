@@ -17,7 +17,7 @@ class AppConstants {
   static const String baseUrl = 'https://api.skylaundry.vn/v1';
   static const String paymentConfigUrl = String.fromEnvironment(
     'PAYMENT_CONFIG_URL',
-    defaultValue: 'https://sky-laundry.vercel.app/api/v1/payment-config',
+    defaultValue: 'https://sky-laundry.vercel.app/payment-config',
   );
   
   // Timeout

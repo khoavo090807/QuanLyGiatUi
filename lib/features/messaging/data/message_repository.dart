@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:app_quanly_giaiui/core/utils/database_timestamp.dart';
+import 'package:app_quanly_giaiui/core/utils/formatter_utils.dart';
 
 class ChatThread {
   const ChatThread({
@@ -101,7 +102,9 @@ class MessageRepository {
       unreadCount: 0,
       isStaff: false,
       orderId: message.orderId,
-      orderNumber: message.orderId == null ? null : '#${message.orderId}',
+      orderNumber: message.orderId == null
+          ? null
+          : FormatterUtils.formatOrderId(message.orderId!),
       initialMessageId: messageId,
     );
   }
@@ -124,7 +127,9 @@ class MessageRepository {
         unreadCount: (row['unread_count'] as num? ?? 0).toInt(),
         isStaff: row['is_staff'] as bool? ?? isStaff,
         orderId: (row['order_id'] as num?)?.toInt(),
-        orderNumber: row['order_number'] as String?,
+        orderNumber: row['order_number'] is String
+            ? FormatterUtils.formatOrderCode(row['order_number'] as String)
+            : null,
         avatarUrl: row['avatar_url'] as String?,
       );
     }).toList(growable: false);

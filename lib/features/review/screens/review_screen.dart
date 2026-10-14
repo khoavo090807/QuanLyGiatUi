@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:app_quanly_giaiui/core/theme/app_colors.dart';
 import 'package:app_quanly_giaiui/core/theme/app_typography.dart';
+import 'package:app_quanly_giaiui/core/utils/formatter_utils.dart';
 import 'package:app_quanly_giaiui/features/review/data/review_repository.dart';
 
 class ReviewScreen extends StatefulWidget {
@@ -130,7 +131,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
                 Text('Chất lượng dịch vụ', style: AppTypography.heading2),
                 const SizedBox(height: 8),
                 Text(
-                  'Đơn hàng #${widget.orderId}',
+                  'Đơn hàng ${_orderId == null ? widget.orderId : FormatterUtils.formatOrderId(_orderId!)}',
                   style: AppTypography.bodyText.copyWith(
                     color: AppColors.textSecondary,
                   ),

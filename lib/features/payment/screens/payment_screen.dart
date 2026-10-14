@@ -107,7 +107,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Đơn hàng #${widget.orderId}',
+                  'Đơn hàng ${_orderId == null ? widget.orderId : FormatterUtils.formatOrderId(_orderId!)}',
                   style: AppTypography.bodyText.copyWith(
                     color: AppColors.textSecondary,
                   ),
