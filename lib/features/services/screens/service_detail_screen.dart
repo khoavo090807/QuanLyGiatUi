@@ -9,6 +9,7 @@ import 'package:app_quanly_giaiui/features/order/domain/cart_item.dart';
 import 'package:app_quanly_giaiui/features/order/domain/cart_store.dart';
 import 'package:app_quanly_giaiui/features/order/widgets/cart_icon_button.dart';
 import 'package:app_quanly_giaiui/features/order/widgets/measurement_dialog.dart';
+import 'package:app_quanly_giaiui/features/review/data/review_repository.dart';
 
 class ServiceDetailScreen extends StatefulWidget {
   const ServiceDetailScreen({required this.serviceId, super.key});
@@ -21,12 +22,266 @@ class ServiceDetailScreen extends StatefulWidget {
 
 class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
   final _repository = OrderRepository();
+  final _reviewRepository = ReviewRepository();
   late final Future<List<LaundryPriceOption>> _pricesFuture;
+  late Future<List<ServiceReview>> _reviewsFuture;
+  ServiceReviewFilter _reviewFilter = ServiceReviewFilter.singleService;
 
   @override
   void initState() {
     super.initState();
     _pricesFuture = _repository.getActivePrices();
+    final serviceId = int.tryParse(widget.serviceId);
+    _reviewsFuture = serviceId == null
+        ? Future.value(const <ServiceReview>[])
+        : _loadReviews(serviceId);
+  }
+
+  Future<List<ServiceReview>> _loadReviews(
+    int serviceId,
+  ) => _reviewRepository.getServiceReviews(
+    serviceId,
+    filter: ServiceReviewFilter.all,
+    pageSize: 1000,
+  );
+
+  void _changeReviewFilter(ServiceReviewFilter filter) {
+    setState(() {
+      _reviewFilter = filter;
+    });
+  }
+
+  Widget _buildReviewsSection(int serviceId) {
+    return FutureBuilder<List<ServiceReview>>(
+      future: _reviewsFuture,
+      builder: (context, snapshot) {
+        final allReviews = snapshot.data ?? const <ServiceReview>[];
+        final averageRating = allReviews.isEmpty
+            ? null
+            : allReviews.fold<int>(0, (sum, review) => sum + review.rating) /
+                  allReviews.length;
+        final reviews = allReviews.where((review) {
+          return switch (_reviewFilter) {
+            ServiceReviewFilter.all => true,
+            ServiceReviewFilter.singleService => !review.isMixedOrder,
+            ServiceReviewFilter.mixedOrder => review.isMixedOrder,
+          };
+        }).toList(growable: false);
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Đánh giá của khách hàng',
+                    style: AppTypography.heading3,
+                  ),
+                ),
+                if (snapshot.connectionState == ConnectionState.waiting)
+                  const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                else
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.star,
+                            size: 17,
+                            color: AppColors.warning,
+                          ),
+                          const SizedBox(width: 3),
+                          Text(
+                            averageRating == null
+                                ? '-- / 5'
+                                : '${averageRating.toStringAsFixed(1)} / 5',
+                            style: AppTypography.bodySmall.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                      Text(
+                        '${allReviews.length} đánh giá',
+                        style: AppTypography.bodySmall.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: _reviewFilterChip(
+                    ServiceReviewFilter.singleService,
+                    'Đơn dịch vụ này',
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _reviewFilterChip(
+                    ServiceReviewFilter.mixedOrder,
+                    'Đơn hỗn hợp',
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (snapshot.connectionState == ConnectionState.waiting)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (snapshot.hasError)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Column(
+                  children: [
+                    const Text('Không tải được đánh giá.'),
+                    TextButton.icon(
+                      onPressed: () => setState(() {
+                        _reviewsFuture = _loadReviews(serviceId);
+                      }),
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Thử lại'),
+                    ),
+                  ],
+                ),
+              )
+            else if (reviews.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 20),
+                child: Center(
+                  child: Text(
+                    'Chưa có đánh giá phù hợp.',
+                    style: AppTypography.bodyText.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ),
+              )
+            else
+              Column(
+                children: reviews
+                    .map(_buildReviewCard)
+                    .toList(growable: false),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _reviewFilterChip(
+    ServiceReviewFilter filter,
+    String label,
+  ) => ChoiceChip(
+    label: Center(child: Text(label, textAlign: TextAlign.center)),
+    selected: _reviewFilter == filter,
+    showCheckmark: true,
+    onSelected: (_) => _changeReviewFilter(filter),
+  );
+
+  Widget _buildReviewCard(ServiceReview review) {
+    final response = review.shopResponse?.trim();
+    final comment = review.comment?.trim();
+    final customerName = review.customerName?.trim();
+    final displayedCustomerName = customerName == null || customerName.isEmpty
+        ? 'Khách hàng'
+        : customerName;
+    final services = review.isMixedOrder
+        ? review.serviceNames.join(', ')
+        : review.serviceName;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                ...List.generate(
+                  5,
+                  (index) => Icon(
+                    index < review.rating ? Icons.star : Icons.star_border,
+                    size: 18,
+                    color: AppColors.warning,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  FormatterUtils.formatDate(review.reviewedAt),
+                  style: AppTypography.bodySmall.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '${review.isMixedOrder ? 'Đơn hỗn hợp' : 'Đơn dịch vụ'}'
+              '${review.orderCode == null ? '' : ' · ${review.orderCode}'}',
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.primary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              'Dịch vụ: $services',
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.primary,
+              ),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              'Khách hàng: $displayedCustomerName',
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.textSecondary,
+              ),
+            ),
+            if (comment?.isNotEmpty == true) ...[
+              const SizedBox(height: 8),
+              Text(comment!, style: AppTypography.bodyText),
+            ],
+            if (response?.isNotEmpty == true) ...[
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.background,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text.rich(
+                  TextSpan(
+                    style: AppTypography.bodySmall,
+                    children: [
+                      const TextSpan(
+                        text: 'Cửa hàng phản hồi: ',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      TextSpan(text: response),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   void _startOrder(int priceId) {
@@ -285,6 +540,8 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                       description:
                           'Bạn có thể theo dõi cập nhật trong lịch sử đơn hàng.',
                     ),
+                    const SizedBox(height: 20),
+                    if (serviceId != null) _buildReviewsSection(serviceId),
                   ],
                 ),
               ),
