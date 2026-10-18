@@ -203,29 +203,6 @@ class _TrackingScreenState extends State<TrackingScreen> {
                   ),
                   const SizedBox(height: 20),
                 ],
-                _SummarySection(
-                  title: 'Thanh toán',
-                  children: [
-                    _SummaryRow(
-                      label: 'Hình thức',
-                      value: details.paymentMethod ?? 'Chưa ghi nhận',
-                    ),
-                    Text(
-                      details.paymentMethod == null
-                          ? 'Chưa có giao dịch thanh toán được ghi nhận.'
-                          : details.paymentMethod == 'Chuyển khoản'
-                          ? 'Mã QR theo số tiền trên hóa đơn hiển thị bên dưới. Trạng thái sẽ tự cập nhật khi nhận được xác nhận chuyển khoản.'
-                          : 'Thanh toán sẽ được thực hiện khi cửa hàng hoàn tất kiểm nhận và hóa đơn được tạo.',
-                      style: const TextStyle(color: AppColors.textSecondary),
-                    ),
-                  ],
-                ),
-                if (widget.orderId != null && details.paymentMethod == 'Chuyển khoản')
-                  BankTransferQrPanel(
-                    orderId: int.parse(widget.orderId!),
-                    orderStatus: order.status,
-                  ),
-                const SizedBox(height: 20),
                 if (details.pickupMethod != null) ...[
                   _SummarySection(
                     title: 'Thông tin nhận và giao đồ',
@@ -263,6 +240,21 @@ class _TrackingScreenState extends State<TrackingScreen> {
                   const SizedBox(height: 20),
                 ],
                 _SummarySection(
+                  title: 'Thanh toán',
+                  children: [
+                    _SummaryRow(
+                      label: 'Hình thức',
+                      value: details.paymentMethod ?? 'Chưa ghi nhận',
+                    ),
+                  ],
+                ),
+                if (widget.orderId != null && details.paymentMethod == 'Chuyển khoản')
+                  BankTransferQrPanel(
+                    orderId: int.parse(widget.orderId!),
+                    orderStatus: order.status,
+                  ),
+                const SizedBox(height: 20),
+                _SummarySection(
                   title: order.hasLaundryDetails ? 'Tạm tính' : 'Báo giá',
                   children: [
                     if (order.hasLaundryDetails && details.subtotalVnd != null)
@@ -297,20 +289,10 @@ class _TrackingScreenState extends State<TrackingScreen> {
                         label: 'Giảm từ mã khuyến mãi',
                         value: '-${_formatVnd(discount)}',
                       ),
-                    if (details.pointsUsed > 0)
-                      _SummaryRow(
-                        label: 'Điểm đã sử dụng',
-                        value: '${details.pointsUsed} điểm',
-                      ),
                     if (details.pointsDiscountVnd > 0)
                       _SummaryRow(
                         label: 'Giảm từ điểm',
                         value: '-${_formatVnd(details.pointsDiscountVnd)}',
-                      ),
-                    if (details.promotionApplied)
-                      _SummaryRow(
-                        label: 'Mã khuyến mãi',
-                        value: details.promotionCode ?? 'Đã áp dụng',
                       ),
                     if (details.promotionDiscountVnd != null ||
                         (details.pointsDiscountVnd > 0 &&
@@ -325,13 +307,6 @@ class _TrackingScreenState extends State<TrackingScreen> {
                       value: _formatVnd(details.finalTotalVnd ?? 0),
                       emphasize: true,
                     ),
-                    const Text(
-                      'Giá cuối cùng có thể được điều chỉnh sau khi cửa hàng kiểm nhận đồ.',
-                      style: TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 13,
-                      ),
-                    ),
                     if (details.promotionApplied &&
                         details.promotionDiscountVnd == null)
                       const Text(
@@ -341,6 +316,13 @@ class _TrackingScreenState extends State<TrackingScreen> {
                           fontSize: 13,
                         ),
                       ),
+                    const Text(
+                      'Giá cuối cùng có thể được điều chỉnh sau khi cửa hàng kiểm nhận đồ.',
+                      style: TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 13,
+                      ),
+                    ),
                   ],
                 ),
                 if (widget.orderId != null &&

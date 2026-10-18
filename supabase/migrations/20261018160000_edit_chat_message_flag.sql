@@ -1,0 +1,6 @@
+BEGIN;
+
+ALTER TABLE public."TinNhan"
+  ADD COLUMN IF NOT EXISTS "DaChinhSua" boolean NOT NULL DEFAULT false;
+
+COMMIT;

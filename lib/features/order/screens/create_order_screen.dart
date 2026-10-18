@@ -6,6 +6,7 @@ import 'package:app_quanly_giaiui/core/navigation/app_routes.dart';
 import 'package:app_quanly_giaiui/core/theme/app_colors.dart';
 import 'package:app_quanly_giaiui/core/theme/app_typography.dart';
 import 'package:app_quanly_giaiui/core/utils/formatter_utils.dart';
+import 'package:app_quanly_giaiui/core/utils/validator_utils.dart';
 import 'package:app_quanly_giaiui/features/order/data/order_repository.dart';
 import 'package:app_quanly_giaiui/features/order/data/delivery_fee_quote.dart';
 import 'package:app_quanly_giaiui/features/order/domain/cart_item.dart';
@@ -34,7 +35,6 @@ class CreateOrderScreen extends StatefulWidget {
 
 class _CreateOrderScreenState extends State<CreateOrderScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _measurementController = TextEditingController();
   final _notesController = TextEditingController();
   final _promotionController = TextEditingController();
   final _repository = OrderRepository();
@@ -47,12 +47,13 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   late Future<_OrderFormData> _formDataFuture;
   Set<int>? _checkoutPriceIds;
 
-  LaundryPriceOption? _selectedPrice;
   List<CartItem> get _cart => widget.checkoutCart
       ? _cartStore.items
-            .where((item) =>
-                _checkoutPriceIds == null ||
-                _checkoutPriceIds!.contains(item.price.priceId))
+            .where(
+              (item) =>
+                  _checkoutPriceIds == null ||
+                  _checkoutPriceIds!.contains(item.price.priceId),
+            )
             .toList(growable: false)
       : _draftItems;
   CustomerAddress? _selectedPickupAddress;
@@ -93,8 +94,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
         : Set<int>.from(widget.selectedCartPriceIds!);
     final tomorrow = DateTime.now().add(const Duration(days: 1));
     _appointment = DateTime(tomorrow.year, tomorrow.month, tomorrow.day, 10);
-    _provideLaundryDetails =
-        widget.checkoutCart || widget.initialPriceId != null;
+    _provideLaundryDetails = widget.checkoutCart;
     if (widget.checkoutCart) _cartStore.addListener(_onCartChanged);
     _formDataFuture = _loadFormData();
     _loadAvailablePoints();
@@ -132,7 +132,6 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   void dispose() {
     _deliveryQuoteDebounce?.cancel();
     if (widget.checkoutCart) _cartStore.removeListener(_onCartChanged);
-    _measurementController.dispose();
     _notesController.dispose();
     _promotionController.dispose();
     _pickupAddressOverride.dispose();
@@ -143,15 +142,6 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   void _onCartChanged() {
     if (mounted) setState(() {});
   }
-
-  bool get _isWeightBased {
-    final symbol = (_selectedPrice?.unitSymbol ?? '').toLowerCase();
-    return symbol == 'kg' || symbol == 'kilogram';
-  }
-
-  num get _measurement =>
-      num.tryParse(_measurementController.text.trim().replaceAll(',', '.')) ??
-      0;
 
   int get _cartTotalMinorUnits {
     var total = 0;
@@ -167,11 +157,12 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
         : (_promotionDiscount(voucher) * 100).round();
     final deliveryFeeMinorUnits =
         ((_hasHomeDeliveryLeg ? _deliveryQuote?.totalFeeVnd : 0) ?? 0) * 100;
-    final remainingEstimatedTotalMinorUnits = (_cartTotalMinorUnits -
-            promotionDiscountMinorUnits +
-            deliveryFeeMinorUnits)
-        .clamp(0, _cartTotalMinorUnits + deliveryFeeMinorUnits)
-        .toInt();
+    final remainingEstimatedTotalMinorUnits =
+        (_cartTotalMinorUnits -
+                promotionDiscountMinorUnits +
+                deliveryFeeMinorUnits)
+            .clamp(0, _cartTotalMinorUnits + deliveryFeeMinorUnits)
+            .toInt();
     return LaundryOrderPricing.redeemablePoints(
       availablePoints: _availablePoints,
       subtotalMinorUnits: remainingEstimatedTotalMinorUnits,
@@ -233,6 +224,9 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   }
 
   Future<void> _showVoucherPicker(List<LoyaltyVoucher> vouchers) async {
+    String? selectedCode = _promotionController.text.isEmpty
+        ? null
+        : _promotionController.text;
     final code = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
@@ -240,96 +234,108 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
-      builder: (sheetContext) => SafeArea(
-        child: SizedBox(
-          height: MediaQuery.sizeOf(sheetContext).height * 0.78,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 18, 12, 12),
-                child: Row(
-                  children: [
-                    const Icon(Icons.confirmation_number_outlined,
-                        color: AppColors.primary),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Mã giảm giá', style: AppTypography.heading3),
-                          Text(
-                            '${vouchers.length} ưu đãi trong tài khoản',
-                            style: AppTypography.bodySmall.copyWith(
-                              color: AppColors.textSecondary,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheetState) => SafeArea(
+          child: SizedBox(
+            height: MediaQuery.sizeOf(sheetContext).height * 0.78,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 18, 12, 12),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.confirmation_number_outlined,
+                        color: AppColors.primary,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Mã giảm giá', style: AppTypography.heading3),
+                            Text(
+                              '${vouchers.length} ưu đãi trong tài khoản',
+                              style: AppTypography.bodySmall.copyWith(
+                                color: AppColors.textSecondary,
+                              ),
                             ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.pop(sheetContext),
+                        icon: const Icon(Icons.close),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+                    children: [
+                      ...vouchers.map((voucher) {
+                        final eligible = _isVoucherEligible(voucher);
+                        final minimum = voucher.minimumOrder;
+                        final remaining = minimum == null
+                            ? 0
+                            : minimum - _cartTotalMinorUnits / 100;
+                        final condition = !eligible && minimum != null
+                            ? 'Cần mua thêm ${_formatVnd(remaining)} · ${_voucherCondition(voucher)}'
+                            : _voucherCondition(voucher);
+                        final isBest =
+                            eligible &&
+                            vouchers.isNotEmpty &&
+                            voucher.id == vouchers.first.id;
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: _VoucherOptionCard(
+                            title: voucher.title,
+                            code: voucher.code,
+                            discountLabel: _voucherDiscountLabel(voucher),
+                            condition: condition,
+                            selected: voucher.code == selectedCode,
+                            eligible: eligible,
+                            best: isBest,
+                            savingAmount: eligible
+                                ? _promotionDiscount(voucher)
+                                : null,
+                            onTap: eligible
+                                ? () => setSheetState(
+                                    () => selectedCode =
+                                        selectedCode == voucher.code
+                                        ? null
+                                        : voucher.code,
+                                  )
+                                : null,
                           ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () => Navigator.pop(sheetContext),
-                      icon: const Icon(Icons.close),
-                    ),
-                  ],
-                ),
-              ),
-              const Divider(height: 1),
-              Expanded(
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
-                  children: [
-                    _VoucherOptionCard(
-                      title: 'Không sử dụng mã giảm giá',
-                      code: null,
-                      discountLabel: 'Giữ nguyên giá đơn hàng',
-                      condition: 'Bạn có thể chọn mã khác bất cứ lúc nào.',
-                      selected: _promotionController.text.isEmpty,
-                      onTap: () => Navigator.pop(sheetContext, ''),
-                    ),
-                    const SizedBox(height: 10),
-                    ...vouchers.map((voucher) {
-                      final eligible = _isVoucherEligible(voucher);
-                      final minimum = voucher.minimumOrder;
-                      final remaining = minimum == null
-                          ? 0
-                          : minimum - _cartTotalMinorUnits / 100;
-                      final condition = !eligible && minimum != null
-                          ? 'Cần mua thêm ${_formatVnd(remaining)} · ${_voucherCondition(voucher)}'
-                          : _voucherCondition(voucher);
-                      final isBest = eligible &&
-                          vouchers.isNotEmpty &&
-                          voucher.id == vouchers.first.id;
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: _VoucherOptionCard(
-                          title: voucher.title,
-                          code: voucher.code,
-                          discountLabel: _voucherDiscountLabel(voucher),
-                          condition: condition,
-                          selected: voucher.code == _promotionController.text,
-                          eligible: eligible,
-                          best: isBest,
-                          savingAmount: eligible
-                              ? _promotionDiscount(voucher)
-                              : null,
-                          onTap: eligible
-                              ? () => Navigator.pop(sheetContext, voucher.code)
-                              : null,
+                        );
+                      }),
+                      if (vouchers.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Center(
+                            child: Text('Hiện chưa có mã giảm giá khả dụng.'),
+                          ),
                         ),
-                      );
-                    }),
-                    if (vouchers.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.all(24),
-                        child: Center(
-                          child: Text('Hiện chưa có mã giảm giá khả dụng.'),
-                        ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: () =>
+                          Navigator.pop(sheetContext, selectedCode ?? ''),
+                      child: const Text('Xong'),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -347,7 +353,9 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
         const SizedBox(height: 10),
         Container(
           decoration: BoxDecoration(
-            color: selected == null ? AppColors.surface : AppColors.primaryExtraLight,
+            color: selected == null
+                ? AppColors.surface
+                : AppColors.primaryExtraLight,
             border: Border.all(
               color: selected == null ? AppColors.border : AppColors.primary,
             ),
@@ -430,7 +438,10 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                           ),
                         ),
                         const SizedBox(width: 4),
-                        const Icon(Icons.chevron_right, color: AppColors.textMuted),
+                        const Icon(
+                          Icons.chevron_right,
+                          color: AppColors.textMuted,
+                        ),
                       ],
                     ),
                   ),
@@ -494,9 +505,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
           const Divider(height: 24),
           Row(
             children: [
-              Expanded(
-                child: Text('Tổng cộng', style: AppTypography.heading3),
-              ),
+              Expanded(child: Text('Tổng cộng', style: AppTypography.heading3)),
               Text(
                 _formatVnd(total),
                 style: AppTypography.heading3.copyWith(
@@ -512,10 +521,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
               alignment: Alignment.centerRight,
               child: Text(
                 'Chưa gồm phí giao nhận đang chờ tính.',
-                style: TextStyle(
-                  color: AppColors.textSecondary,
-                  fontSize: 12,
-                ),
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
               ),
             ),
           ],
@@ -529,18 +535,18 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     final promotionDiscountMinorUnits = selectedVoucher == null
         ? 0
         : (_promotionDiscount(selectedVoucher) * 100).round();
-    final pointsDiscountMinorUnits =
-        _pointsDiscountAfterPromotion(selectedVoucher);
+    final pointsDiscountMinorUnits = _pointsDiscountAfterPromotion(
+      selectedVoucher,
+    );
     final deliveryFeeMinorUnits =
         ((_hasHomeDeliveryLeg ? _deliveryQuote?.totalFeeVnd : 0) ?? 0) * 100;
     final totalBeforePointsMinorUnits =
         _cartTotalMinorUnits -
         promotionDiscountMinorUnits +
         deliveryFeeMinorUnits;
-    return (totalBeforePointsMinorUnits - pointsDiscountMinorUnits).clamp(
-      0,
-      totalBeforePointsMinorUnits,
-    ).toInt();
+    return (totalBeforePointsMinorUnits - pointsDiscountMinorUnits)
+        .clamp(0, totalBeforePointsMinorUnits)
+        .toInt();
   }
 
   Future<void> _loadAvailablePoints() async {
@@ -568,34 +574,6 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       _pointsLoadFailed = false;
     });
     _loadAvailablePoints();
-  }
-
-  void _addToCart() {
-    final price = _selectedPrice;
-    final measurement = _measurement;
-    if (price == null) return;
-    if (!measurement.isFinite ||
-        measurement <= 0 ||
-        measurement > 99999999.99) {
-      _showMessage('Nhập số lượng hoặc khối lượng hợp lệ.');
-      return;
-    }
-    if (measurement * 100 != (measurement * 100).round()) {
-      _showMessage('Số lượng chỉ được có tối đa 2 chữ số thập phân.');
-      return;
-    }
-
-    final item = CartItem(price: price, measurement: measurement);
-    if (widget.checkoutCart) {
-      _cartStore.add(item);
-      _checkoutPriceIds?.add(price.priceId);
-    } else {
-      _draftItems.add(item);
-    }
-    setState(() {
-      _selectedPrice = null;
-      _measurementController.clear();
-    });
   }
 
   void _removeFromCart(int index) {
@@ -649,19 +627,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     if (storeWillInspect && !widget.checkoutCart) _draftItems.clear();
     setState(() {
       _provideLaundryDetails = !storeWillInspect;
-      _selectedPrice = null;
-      _measurementController.clear();
     });
-  }
-
-  int? get _estimatedTotalMinorUnits {
-    final price = _selectedPrice;
-    if (price == null || _measurement <= 0) return null;
-    return LaundryOrderPricing.lineTotalMinorUnits(
-      unitPriceVnd: price.unitPriceVnd,
-      quantity: _isWeightBased ? null : _measurement,
-      weightKg: _isWeightBased ? _measurement : null,
-    );
   }
 
   Future<void> _chooseAppointment() async {
@@ -680,15 +646,19 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     );
     if (selectedTime == null || !mounted) return;
 
-    setState(() {
-      _appointment = DateTime(
-        selectedDate.year,
-        selectedDate.month,
-        selectedDate.day,
-        selectedTime.hour,
-        selectedTime.minute,
-      );
-    });
+    final appointment = DateTime(
+      selectedDate.year,
+      selectedDate.month,
+      selectedDate.day,
+      selectedTime.hour,
+      selectedTime.minute,
+    );
+    final error = ValidatorUtils.validateAppointment(appointment);
+    if (error != null) {
+      _showMessage(error);
+      return;
+    }
+    setState(() => _appointment = appointment);
   }
 
   Future<void> _useCurrentLocation({required bool forDelivery}) async {
@@ -799,9 +769,11 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
 
     // Address keystrokes are not confirmed locations. Wait for a saved, GPS,
     // or selected geocoder address before spending a quote request.
-    final pickupReady = _pickupMethod != 'Tại nhà' ||
+    final pickupReady =
+        _pickupMethod != 'Tại nhà' ||
         (_pickupAddressVerified && pickup?.isNotEmpty == true);
-    final deliveryReady = _deliveryMethod != 'Tại nhà' ||
+    final deliveryReady =
+        _deliveryMethod != 'Tại nhà' ||
         (_deliveryAddressVerified && delivery?.isNotEmpty == true);
     if (!pickupReady || !deliveryReady) {
       setState(() {
@@ -912,7 +884,10 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Phí giao nhận theo từng chặng', style: AppTypography.heading3),
+            Text(
+              'Phí giao nhận theo từng chặng',
+              style: AppTypography.heading3,
+            ),
             const SizedBox(height: 8),
             if (_pickupMethod == 'Tại nhà')
               _deliveryFeeLegRow(
@@ -975,7 +950,10 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     List<LaundryPriceOption> availablePrices,
   ) async {
     _serviceSearchQuery = '';
-    final selected = await showModalBottomSheet<LaundryPriceOption>(
+    final quantities = <int, int>{
+      for (final item in _cart) item.price.priceId: item.measurement.toInt(),
+    };
+    final selected = await showModalBottomSheet<Map<int, int>>(
       context: context,
       isScrollControlled: true,
       builder: (sheetContext) => StatefulBuilder(
@@ -1018,7 +996,24 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                       onChanged: (value) =>
                           setSheetState(() => _serviceSearchQuery = value),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.edit_outlined,
+                          size: 15,
+                          color: AppColors.primary,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Chạm vào ô số lượng để nhập nhanh',
+                          style: AppTypography.caption.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
                     Expanded(
                       child: filteredPrices.isEmpty
                           ? const Center(
@@ -1030,6 +1025,22 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                                   const Divider(height: 1),
                               itemBuilder: (context, index) {
                                 final price = filteredPrices[index];
+                                final quantity = quantities[price.priceId] ?? 0;
+                                Future<void> editQuantity() async {
+                                  final value = await showDialog<int>(
+                                    context: context,
+                                    builder: (_) => _QuantityInputDialog(
+                                      initialQuantity: quantity,
+                                      unitSymbol: price.unitSymbol,
+                                    ),
+                                  );
+                                  if (value != null) {
+                                    setSheetState(
+                                      () => quantities[price.priceId] = value,
+                                    );
+                                  }
+                                }
+
                                 return ListTile(
                                   leading: const Icon(
                                     Icons.local_laundry_service_outlined,
@@ -1038,14 +1049,85 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                                     '${price.serviceName} · ${price.itemTypeName}',
                                   ),
                                   subtitle: Text(
-                                    '${_formatVnd(price.unitPriceVnd)} / '
-                                    '${price.unitSymbol}',
+                                    '${_formatVnd(price.unitPriceVnd)} / ${price.unitSymbol}',
                                   ),
-                                  onTap: () =>
-                                      Navigator.pop(sheetContext, price),
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        tooltip: 'Giảm số lượng',
+                                        onPressed: quantity == 0
+                                            ? null
+                                            : () => setSheetState(
+                                                () =>
+                                                    quantities[price.priceId] =
+                                                        quantity - 1,
+                                              ),
+                                        icon: const Icon(
+                                          Icons.remove_circle_outline,
+                                        ),
+                                      ),
+                                      InkWell(
+                                        onTap: editQuantity,
+                                        borderRadius: BorderRadius.circular(6),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 5,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.surface,
+                                            border: Border.all(
+                                              color: AppColors.primaryLight,
+                                            ),
+                                            borderRadius: BorderRadius.circular(
+                                              8,
+                                            ),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Text(
+                                                '$quantity',
+                                                textAlign: TextAlign.center,
+                                                style: AppTypography.title,
+                                              ),
+                                              const SizedBox(width: 4),
+                                              const Icon(
+                                                Icons.edit_outlined,
+                                                size: 14,
+                                                color: AppColors.primary,
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                      IconButton(
+                                        tooltip: 'Tăng số lượng',
+                                        onPressed: () => setSheetState(
+                                          () => quantities[price.priceId] =
+                                              quantity + 1,
+                                        ),
+                                        icon: const Icon(
+                                          Icons.add_circle_outline,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 );
                               },
                             ),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton(
+                        onPressed: () => Navigator.pop(
+                          sheetContext,
+                          Map<int, int>.from(quantities),
+                        ),
+                        child: const Text('Xong'),
+                      ),
                     ),
                   ],
                 ),
@@ -1058,12 +1140,43 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
 
     if (selected == null || !mounted) return;
     setState(() {
-      _selectedPrice = selected;
-      _measurementController.clear();
+      for (final price in availablePrices) {
+        final quantity = selected[price.priceId] ?? 0;
+        if (widget.checkoutCart) {
+          final index = _cartStore.items.indexWhere(
+            (item) => item.price.priceId == price.priceId,
+          );
+          if (quantity == 0) {
+            if (index >= 0) _cartStore.removeAt(index);
+            _checkoutPriceIds?.remove(price.priceId);
+          } else if (index >= 0) {
+            _cartStore.setMeasurement(index, quantity);
+          } else {
+            _cartStore.add(CartItem(price: price, measurement: quantity));
+            _checkoutPriceIds?.add(price.priceId);
+          }
+        } else {
+          final index = _draftItems.indexWhere(
+            (item) => item.price.priceId == price.priceId,
+          );
+          if (quantity == 0) {
+            if (index >= 0) _draftItems.removeAt(index);
+          } else if (index >= 0) {
+            _draftItems[index] = CartItem(price: price, measurement: quantity);
+          } else {
+            _draftItems.add(CartItem(price: price, measurement: quantity));
+          }
+        }
+      }
     });
   }
 
   Future<void> _continueToSummary(List<LoyaltyVoucher> vouchers) async {
+    final appointmentError = ValidatorUtils.validateAppointment(_appointment);
+    if (appointmentError != null) {
+      _showMessage(appointmentError);
+      return;
+    }
     if (_provideLaundryDetails && _cart.isEmpty) {
       _showMessage(
         'Thêm ít nhất một loại đồ hoặc bỏ chọn mục nhập thông tin đồ giặt.',
@@ -1074,7 +1187,9 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       _showMessage('Nhập, chọn hoặc dùng vị trí hiện tại cho địa chỉ lấy đồ.');
       return;
     }
-    if (_pickupMethod == 'Tại nhà' && _pickupAddressOverride.text.trim().isNotEmpty && !_pickupAddressVerified) {
+    if (_pickupMethod == 'Tại nhà' &&
+        _pickupAddressOverride.text.trim().isNotEmpty &&
+        !_pickupAddressVerified) {
       _showMessage('Vui lòng chọn một địa chỉ trong danh sách gợi ý.');
       return;
     }
@@ -1082,13 +1197,22 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       _showMessage('Nhập, chọn hoặc dùng vị trí hiện tại cho địa chỉ giao đồ.');
       return;
     }
-    if (_deliveryMethod == 'Tại nhà' && _deliveryAddressOverride.text.trim().isNotEmpty && !_deliveryAddressVerified) {
+    if (_deliveryMethod == 'Tại nhà' &&
+        _deliveryAddressOverride.text.trim().isNotEmpty &&
+        !_deliveryAddressVerified) {
       _showMessage('Vui lòng chọn một địa chỉ trong danh sách gợi ý.');
       return;
     }
     final deliveryQuote = await _ensureDeliveryQuote();
     if (!mounted) return;
     if (_hasHomeDeliveryLeg && deliveryQuote == null) return;
+    final updatedAppointmentError = ValidatorUtils.validateAppointment(
+      _appointment,
+    );
+    if (updatedAppointmentError != null) {
+      _showMessage(updatedAppointmentError);
+      return;
+    }
 
     final selectedVoucher = vouchers
         .where(
@@ -1172,22 +1296,12 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                     .where((price) => price.priceId == widget.initialPriceId)
                     .firstOrNull
                     ?.serviceId;
-          final addedPriceIds = _cart.map((item) => item.price.priceId).toSet();
           final scopedPrices = initialServiceId == null
               ? allPrices
               : allPrices
                     .where((price) => price.serviceId == initialServiceId)
                     .toList(growable: false);
-          final availablePrices = scopedPrices
-              .where((price) => !addedPriceIds.contains(price.priceId))
-              .toList(growable: false);
-          final selectedPrice =
-              _selectedPrice != null &&
-                  availablePrices.any(
-                    (price) => price.priceId == _selectedPrice!.priceId,
-                  )
-              ? _selectedPrice
-              : null;
+          final availablePrices = scopedPrices;
           final selectedPickupAddressId = _selectedPickupAddress?.id;
           if (selectedPickupAddressId != null) {
             _selectedPickupAddress = addresses
@@ -1200,18 +1314,28 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                 .where((address) => address.id == selectedDeliveryAddressId)
                 .firstOrNull;
           }
-          if (_selectedPickupAddress == null && _currentPickupLocation == null && !_pickupAddressWasCleared) {
-            _selectedPickupAddress = addresses.where((address) => address.isDefault).firstOrNull;
+          if (_selectedPickupAddress == null &&
+              _currentPickupLocation == null &&
+              !_pickupAddressWasCleared) {
+            _selectedPickupAddress = addresses
+                .where((address) => address.isDefault)
+                .firstOrNull;
             _selectedPickupAddress ??= addresses.firstOrNull;
-            if (_pickupAddressOverride.text.isEmpty && _selectedPickupAddress != null) {
+            if (_pickupAddressOverride.text.isEmpty &&
+                _selectedPickupAddress != null) {
               _pickupAddressOverride.text = _selectedPickupAddress!.address;
               _pickupAddressVerified = true;
             }
           }
-          if (_selectedDeliveryAddress == null && _currentDeliveryLocation == null && !_deliveryAddressWasCleared) {
-            _selectedDeliveryAddress = addresses.where((address) => address.isDefault).firstOrNull;
+          if (_selectedDeliveryAddress == null &&
+              _currentDeliveryLocation == null &&
+              !_deliveryAddressWasCleared) {
+            _selectedDeliveryAddress = addresses
+                .where((address) => address.isDefault)
+                .firstOrNull;
             _selectedDeliveryAddress ??= addresses.firstOrNull;
-            if (_deliveryAddressOverride.text.isEmpty && _selectedDeliveryAddress != null) {
+            if (_deliveryAddressOverride.text.isEmpty &&
+                _selectedDeliveryAddress != null) {
               _deliveryAddressOverride.text = _selectedDeliveryAddress!.address;
               _deliveryAddressVerified = true;
             }
@@ -1249,75 +1373,11 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                     OutlinedButton.icon(
                       onPressed: () => _showServicePicker(availablePrices),
                       icon: const Icon(Icons.search),
-                      label: Align(
+                      label: const Align(
                         alignment: Alignment.centerLeft,
-                        child: Text(
-                          selectedPrice == null
-                              ? 'Chọn dịch vụ và loại đồ giặt'
-                              : '${selectedPrice.serviceName} · '
-                                    '${selectedPrice.itemTypeName} '
-                                    '(${selectedPrice.unitSymbol})',
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                        child: Text('Chọn dịch vụ và loại đồ giặt'),
                       ),
                     ),
-                  if (selectedPrice != null) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      '${_formatVnd(selectedPrice.unitPriceVnd)} / '
-                      '${selectedPrice.unitSymbol}',
-                      style: AppTypography.bodyText.copyWith(
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 24),
-                  Text(
-                    _isWeightBased ? 'Khối lượng dự kiến' : 'Số lượng',
-                    style: AppTypography.heading3,
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _measurementController,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    decoration: InputDecoration(
-                      labelText: _isWeightBased
-                          ? 'Khối lượng (kg)'
-                          : 'Số lượng',
-                      suffixText: _selectedPrice?.unitSymbol,
-                    ),
-                    onChanged: (_) => setState(() {}),
-                    validator: (value) {
-                      final measurement = num.tryParse(
-                        (value ?? '').trim().replaceAll(',', '.'),
-                      );
-                      if (measurement == null || !measurement.isFinite) {
-                        return 'Nhập số lượng hợp lệ.';
-                      }
-                      if (measurement <= 0 || measurement > 99999999.99) {
-                        return 'Giá trị phải lớn hơn 0.';
-                      }
-                      if (measurement * 100 != (measurement * 100).round()) {
-                        return 'Tối đa 2 chữ số thập phân.';
-                      }
-                      return null;
-                    },
-                  ),
-                  if (_estimatedTotalMinorUnits case final total?) ...[
-                    const SizedBox(height: 12),
-                    _EstimateRow(totalMinorUnits: total),
-                  ],
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: selectedPrice == null ? null : _addToCart,
-                      icon: const Icon(Icons.add_shopping_cart_outlined),
-                      label: const Text('Thêm vào đơn hàng'),
-                    ),
-                  ),
                   if (_cart.isNotEmpty) ...[
                     const SizedBox(height: 24),
                     Row(
@@ -1664,7 +1724,10 @@ class _AddressInputState extends State<_AddressInput> {
     final query = value.trim();
     final generation = ++_searchGeneration;
     if (query.length < 5) {
-      setState(() { _suggestions = const []; _isSearching = false; });
+      setState(() {
+        _suggestions = const [];
+        _isSearching = false;
+      });
       return;
     }
     setState(() => _isSearching = true);
@@ -1672,10 +1735,16 @@ class _AddressInputState extends State<_AddressInput> {
       try {
         final results = await widget.suggestionService.suggest(query);
         if (!mounted || generation != _searchGeneration) return;
-        setState(() { _suggestions = results; _isSearching = false; });
+        setState(() {
+          _suggestions = results;
+          _isSearching = false;
+        });
       } catch (_) {
         if (!mounted || generation != _searchGeneration) return;
-        setState(() { _suggestions = const []; _isSearching = false; });
+        setState(() {
+          _suggestions = const [];
+          _isSearching = false;
+        });
       }
     });
   }
@@ -1693,24 +1762,30 @@ class _AddressInputState extends State<_AddressInput> {
           controller: controller,
           maxLines: 2,
           textInputAction: TextInputAction.done,
-          onChanged: (value) { widget.onAddressChanged(value); _search(value); },
+          onChanged: (value) {
+            widget.onAddressChanged(value);
+            _search(value);
+          },
           decoration: InputDecoration(
             labelText: label,
             hintText: 'Nhập địa chỉ rồi chọn kết quả gợi ý',
             prefixIcon: const Icon(Icons.edit_location_alt_outlined),
-            suffixIcon: controller.text.isEmpty ? null : IconButton(
-              tooltip: 'Xóa địa chỉ',
-              onPressed: () {
-                _searchGeneration++;
-                _debounce?.cancel();
-                setState(() => _suggestions = const []);
-                widget.onClearAddress();
-              },
-              icon: const Icon(Icons.close),
-            ),
+            suffixIcon: controller.text.isEmpty
+                ? null
+                : IconButton(
+                    tooltip: 'Xóa địa chỉ',
+                    onPressed: () {
+                      _searchGeneration++;
+                      _debounce?.cancel();
+                      setState(() => _suggestions = const []);
+                      widget.onClearAddress();
+                    },
+                    icon: const Icon(Icons.close),
+                  ),
           ),
           validator: (value) {
-            final hasAddress = (value?.trim().isNotEmpty == true && widget.addressVerified) ||
+            final hasAddress =
+                (value?.trim().isNotEmpty == true && widget.addressVerified) ||
                 currentLocation != null;
             return hasAddress ? null : 'Vui lòng nhập hoặc chọn $label.';
           },
@@ -1720,23 +1795,33 @@ class _AddressInputState extends State<_AddressInput> {
         else if (_suggestions.isNotEmpty)
           Card(
             margin: EdgeInsets.zero,
-            child: Column(children: _suggestions.map((suggestion) => ListTile(
-              dense: true,
-              leading: const Icon(Icons.location_on_outlined),
-              title: Text(suggestion),
-              onTap: () {
-                _searchGeneration++;
-                _debounce?.cancel();
-                setState(() => _suggestions = const []);
-                widget.onSelectSuggestion(suggestion);
-              },
-            )).toList(growable: false)),
+            child: Column(
+              children: _suggestions
+                  .map(
+                    (suggestion) => ListTile(
+                      dense: true,
+                      leading: const Icon(Icons.location_on_outlined),
+                      title: Text(suggestion),
+                      onTap: () {
+                        _searchGeneration++;
+                        _debounce?.cancel();
+                        setState(() => _suggestions = const []);
+                        widget.onSelectSuggestion(suggestion);
+                      },
+                    ),
+                  )
+                  .toList(growable: false),
+            ),
           )
         else if (controller.text.trim().length >= 5 && !widget.addressVerified)
           Padding(
             padding: const EdgeInsets.only(top: 6),
-            child: Text('Chọn địa chỉ gợi ý để xác nhận địa chỉ hợp lệ.',
-              style: AppTypography.bodySmall.copyWith(color: AppColors.textSecondary)),
+            child: Text(
+              'Chọn địa chỉ gợi ý để xác nhận địa chỉ hợp lệ.',
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.textSecondary,
+              ),
+            ),
           ),
         const SizedBox(height: 8),
         OutlinedButton.icon(
@@ -1985,9 +2070,7 @@ class _PriceBreakdownLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Row(
     children: [
-      Expanded(
-        child: Text(label, style: AppTypography.bodySmall),
-      ),
+      Expanded(child: Text(label, style: AppTypography.bodySmall)),
       Text(
         value,
         style: AppTypography.bodySmall.copyWith(
@@ -1995,6 +2078,68 @@ class _PriceBreakdownLine extends StatelessWidget {
           fontWeight: FontWeight.w600,
         ),
       ),
+    ],
+  );
+}
+
+class _QuantityInputDialog extends StatefulWidget {
+  const _QuantityInputDialog({
+    required this.initialQuantity,
+    required this.unitSymbol,
+  });
+
+  final int initialQuantity;
+  final String unitSymbol;
+
+  @override
+  State<_QuantityInputDialog> createState() => _QuantityInputDialogState();
+}
+
+class _QuantityInputDialogState extends State<_QuantityInputDialog> {
+  late final TextEditingController _controller;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: '${widget.initialQuantity}');
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final quantity = int.tryParse(_controller.text.trim());
+    if (quantity == null || quantity < 0 || quantity > 99999999) {
+      setState(() => _error = 'Nhập số nguyên từ 0 đến 99.999.999.');
+      return;
+    }
+    Navigator.pop(context, quantity);
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Nhập số lượng'),
+    content: TextField(
+      controller: _controller,
+      autofocus: true,
+      keyboardType: TextInputType.number,
+      decoration: InputDecoration(
+        labelText: 'Số lượng',
+        suffixText: widget.unitSymbol,
+        errorText: _error,
+      ),
+      onSubmitted: (_) => _submit(),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Hủy'),
+      ),
+      FilledButton(onPressed: _submit, child: const Text('Xác nhận')),
     ],
   );
 }
@@ -2027,7 +2172,7 @@ class _VoucherOptionCard extends StatelessWidget {
     final background = !eligible
         ? AppColors.background
         : selected
-        ? AppColors.primaryExtraLight
+        ? AppColors.primaryLight
         : AppColors.surface;
     final borderColor = selected ? AppColors.primary : AppColors.divider;
     return Material(
@@ -2074,18 +2219,19 @@ class _VoucherOptionCard extends StatelessWidget {
                               color: eligible
                                   ? AppColors.textPrimary
                                   : AppColors.textSecondary,
+                              fontWeight: selected
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
                             ),
                           ),
                         ),
                         if (best) ...[
                           const SizedBox(width: 6),
-                          const Icon(Icons.star_rounded,
-                              size: 17, color: AppColors.warning),
-                        ],
-                        if (selected) ...[
-                          const SizedBox(width: 6),
-                          const Icon(Icons.check_circle,
-                              size: 19, color: AppColors.primary),
+                          const Icon(
+                            Icons.star_rounded,
+                            size: 17,
+                            color: AppColors.warning,
+                          ),
                         ],
                       ],
                     ),
@@ -2131,11 +2277,20 @@ class _VoucherOptionCard extends StatelessWidget {
                     Text(
                       condition,
                       style: AppTypography.bodySmall.copyWith(
-                        color: eligible ? AppColors.textSecondary : AppColors.warning,
+                        color: eligible
+                            ? AppColors.textSecondary
+                            : AppColors.warning,
                       ),
                     ),
                   ],
                 ),
+              ),
+              const SizedBox(width: 12),
+              Icon(
+                selected
+                    ? Icons.radio_button_checked
+                    : Icons.radio_button_unchecked,
+                color: selected ? AppColors.primary : AppColors.textSecondary,
               ),
             ],
           ),

@@ -1,6 +1,13 @@
 class ValidatorUtils {
   ValidatorUtils._();
 
+  static String? validateAppointment(DateTime appointment, {DateTime? now}) {
+    if (appointment.isBefore(now ?? DateTime.now())) {
+      return 'Lịch hẹn không được ở thời điểm quá khứ';
+    }
+    return null;
+  }
+
   static String? validatePhone(String? value) {
     if (value == null || value.trim().isEmpty) {
       return 'Vui lòng nhập số điện thoại';
@@ -50,10 +57,8 @@ class ValidatorUtils {
     if (value == null || value.isEmpty) {
       return null; // Email is optional for this app
     }
-    
-    final emailRegex = RegExp(
-      r'^[a-zA-Z0-9.]+@[a-zA-Z0-9]+\.[a-zA-Z]+',
-    );
+
+    final emailRegex = RegExp(r'^[a-zA-Z0-9.]+@[a-zA-Z0-9]+\.[a-zA-Z]+');
     if (!emailRegex.hasMatch(value)) {
       return 'Email không hợp lệ';
     }

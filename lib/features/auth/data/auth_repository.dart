@@ -5,12 +5,9 @@ import 'package:app_quanly_giaiui/core/config/supabase_config.dart';
 import 'package:app_quanly_giaiui/features/notification/services/notification_service.dart';
 
 class AuthRepository {
-  static const passwordSetupCompleteMetadataKey =
-      'password_setup_completed';
+  static const passwordSetupCompleteMetadataKey = 'password_setup_completed';
   static const authCallbackRedirectTo =
       'io.supabase.appquanlygiaui://login-callback';
-  static const passwordRecoveryRedirectTo =
-      'io.supabase.appquanlygiaui://login-callback/reset-password';
 
   AuthRepository({SupabaseClient? client})
     : _client = client ?? _configuredClient();
@@ -121,18 +118,50 @@ class AuthRepository {
     );
   }
 
-  Future<void> signUpCustomer({
+  Future<bool> signUpCustomer({
     required String fullName,
     required String email,
     required String password,
   }) async {
-    final response = await _client.auth.signUp(
-      email: email.trim(),
-      password: password,
-      data: {'full_name': fullName.trim()},
-      emailRedirectTo: kIsWeb ? Uri.base.origin : authCallbackRedirectTo,
-    );
+    late final AuthResponse response;
+    try {
+      response = await _client.auth.signUp(
+        email: email.trim(),
+        password: password,
+        data: {'full_name': fullName.trim()},
+        emailRedirectTo: kIsWeb ? Uri.base.origin : authCallbackRedirectTo,
+      );
+    } on AuthException catch (error) {
+      final message = error.message.toLowerCase();
+      if (message.contains('already registered') ||
+          message.contains('already exists')) {
+        return false;
+      }
+      rethrow;
+    }
+
+    if (response.user?.identities?.isEmpty == true) return false;
     if (response.session != null) await ensureCustomerProfile();
+    return true;
+  }
+
+  Future<void> resendSignupConfirmationOtp(String email) async {
+    await _client.auth.resend(type: OtpType.signup, email: email.trim());
+  }
+
+  Future<void> verifySignupOtp({
+    required String email,
+    required String token,
+  }) async {
+    final response = await _client.auth.verifyOTP(
+      email: email.trim(),
+      token: token.trim(),
+      type: OtpType.signup,
+    );
+    if (response.session == null) {
+      throw const AuthException('Mã OTP không hợp lệ hoặc đã hết hạn.');
+    }
+    await ensureCustomerProfile();
   }
 
   Future<void> ensureCustomerProfile() async {
@@ -145,16 +174,27 @@ class AuthRepository {
   }
 
   Future<void> requestPasswordReset(String email) async {
-    await _client.auth.resetPasswordForEmail(
-      email.trim(),
-      redirectTo: kIsWeb ? Uri.base.origin : passwordRecoveryRedirectTo,
+    await _client.auth.resetPasswordForEmail(email.trim());
+  }
+
+  Future<void> verifyPasswordResetOtp({
+    required String email,
+    required String token,
+  }) async {
+    final response = await _client.auth.verifyOTP(
+      email: email.trim(),
+      token: token.trim(),
+      type: OtpType.recovery,
     );
+    if (response.session == null) {
+      throw const AuthException('Mã OTP không hợp lệ hoặc đã hết hạn.');
+    }
   }
 
   Future<void> updatePassword(String password) async {
     if (_client.auth.currentSession == null) {
       throw const AuthException(
-        'Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.',
+        'Mã OTP đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.',
       );
     }
     final user = _client.auth.currentUser;
@@ -168,10 +208,7 @@ class AuthRepository {
       metadata[passwordSetupCompleteMetadataKey] = true;
     }
     await _client.auth.updateUser(
-      UserAttributes(
-        password: password,
-        data: isGoogleUser ? metadata : null,
-      ),
+      UserAttributes(password: password, data: isGoogleUser ? metadata : null),
     );
   }
 
@@ -195,10 +232,7 @@ class AuthRepository {
       password: currentPassword,
     );
     await _client.auth.updateUser(
-      UserAttributes(
-        password: newPassword,
-        currentPassword: currentPassword,
-      ),
+      UserAttributes(password: newPassword, currentPassword: currentPassword),
     );
   }
 
@@ -227,7 +261,9 @@ class AuthRepository {
   Future<void> setInitialGooglePassword(String password) async {
     final user = _client.auth.currentUser;
     if (user == null) {
-      throw const AuthException('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+      throw const AuthException(
+        'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.',
+      );
     }
 
     final metadata = Map<String, dynamic>.from(user.userMetadata ?? {});

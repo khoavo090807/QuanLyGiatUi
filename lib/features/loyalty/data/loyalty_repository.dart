@@ -7,6 +7,7 @@ class LoyaltyVoucher {
     required this.title,
     required this.discountType,
     required this.discountValue,
+    required this.expiresAt,
     this.minimumOrder,
     this.maximumDiscount,
     this.condition,
@@ -17,6 +18,7 @@ class LoyaltyVoucher {
   final String title;
   final String discountType;
   final num discountValue;
+  final DateTime expiresAt;
   final num? minimumOrder;
   final num? maximumDiscount;
   final String? condition;
@@ -28,6 +30,7 @@ class LoyaltyVoucher {
       title: json['tenkhuyenmai'] as String,
       discountType: json['loaikhuyenmai'] as String,
       discountValue: json['giatrigiam'] as num,
+      expiresAt: DateTime.parse(json['ngayketthuc'] as String),
       minimumOrder: json['giatridontoithieu'] as num?,
       maximumDiscount: json['mucgiamtoida'] as num?,
       condition: json['dieukienapdung'] as String?,

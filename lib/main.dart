@@ -49,6 +49,9 @@ class _MainAppState extends State<MainApp> {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
       routerConfig: AppRouter.router,
+      builder: (context, child) => SafeArea(
+        child: child ?? const SizedBox.shrink(),
+      ),
     );
   }
 }

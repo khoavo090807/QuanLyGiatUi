@@ -43,9 +43,13 @@ class AppRouter {
     return AppRoutes.homePath;
   }
 
-  static bool _isStaffAccount(List<String> roles) =>
-      roles.map((role) => role.trim()).any((role) =>
-        role == 'Nhân viên' || role == 'Chủ cửa hàng' || role.startsWith('Quản lý'),
+  static bool _isStaffAccount(List<String> roles) => roles
+      .map((role) => role.trim())
+      .any(
+        (role) =>
+            role == 'Nhân viên' ||
+            role == 'Chủ cửa hàng' ||
+            role.startsWith('Quản lý'),
       );
 
   static Future<List<String>> _loadCurrentRoles() async {
@@ -130,7 +134,8 @@ class AppRouter {
       GoRoute(
         path: AppRoutes.resetPasswordPath,
         name: AppRoutes.resetPassword,
-        builder: (context, state) => const ResetPasswordScreen(),
+        builder: (context, state) =>
+            ResetPasswordScreen(recoveryOtpVerified: state.extra == true),
       ),
       GoRoute(
         path: AppRoutes.initialPasswordSetupPath,
@@ -280,9 +285,8 @@ class AppRouter {
       GoRoute(
         path: '/vouchers',
         name: AppRoutes.vouchers,
-        builder: (context, state) => VouchersScreen(
-          highlightCode: state.extra as String?,
-        ),
+        builder: (context, state) =>
+            VouchersScreen(highlightCode: state.extra as String?),
       ),
       GoRoute(
         path: AppRoutes.staffQueuePath,
@@ -395,11 +399,10 @@ class _AuthRefreshListenable extends ChangeNotifier {
       ) {
         AppRouter._cachedRoles = null;
         if (authState.event == AuthChangeEvent.passwordRecovery) {
-          // Supabase emits this event while handling the incoming app link.
-          // Navigate after that callback has finished to avoid re-entering
-          // GoRouter during deep-link/session restoration.
+          // Navigate after OTP verification finishes to avoid re-entering
+          // GoRouter while Supabase is updating the auth state.
           scheduleMicrotask(
-            () => AppRouter.router.go(AppRoutes.resetPasswordPath),
+            () => AppRouter.router.go(AppRoutes.resetPasswordPath, extra: true),
           );
         }
         notifyListeners();

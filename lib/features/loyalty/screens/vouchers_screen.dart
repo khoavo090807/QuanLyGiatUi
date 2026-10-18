@@ -63,11 +63,16 @@ class _VouchersScreenState extends State<VouchersScreen> {
 
           final vouchers = snapshot.data!;
           final highlightCode = widget.highlightCode?.trim();
-          final highlightedVoucher = highlightCode == null || highlightCode.isEmpty
+          final highlightedVoucher =
+              highlightCode == null || highlightCode.isEmpty
               ? null
-              : vouchers.where((voucher) =>
-                    voucher.code.toLowerCase() == highlightCode.toLowerCase(),
-                  ).firstOrNull;
+              : vouchers
+                    .where(
+                      (voucher) =>
+                          voucher.code.toLowerCase() ==
+                          highlightCode.toLowerCase(),
+                    )
+                    .firstOrNull;
 
           if (highlightedVoucher != null && !_hasScrolledToHighlightedVoucher) {
             _hasScrolledToHighlightedVoucher = true;
@@ -98,7 +103,9 @@ class _VouchersScreenState extends State<VouchersScreen> {
               children: [
                 _buildHeader(),
                 const SizedBox(height: 24),
-                if (highlightCode != null && highlightCode.isNotEmpty && highlightedVoucher == null)
+                if (highlightCode != null &&
+                    highlightCode.isNotEmpty &&
+                    highlightedVoucher == null)
                   _buildUnavailablePromotionNotice(),
                 if (vouchers.isEmpty)
                   Center(
@@ -125,7 +132,8 @@ class _VouchersScreenState extends State<VouchersScreen> {
                 else
                   ...vouchers.map((voucher) {
                     final isHighlighted =
-                        voucher.code.toLowerCase() == highlightCode?.toLowerCase();
+                        voucher.code.toLowerCase() ==
+                        highlightCode?.toLowerCase();
                     return _buildVoucher(
                       voucher,
                       key: isHighlighted ? _highlightedVoucherKey : null,
@@ -264,6 +272,13 @@ class _VouchersScreenState extends State<VouchersScreen> {
                   style: AppTypography.bodySmall.copyWith(
                     color: AppColors.success,
                     fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'HSD: ${FormatterUtils.formatDate(voucher.expiresAt)}',
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.textSecondary,
                   ),
                 ),
                 if (condition.isNotEmpty) ...[

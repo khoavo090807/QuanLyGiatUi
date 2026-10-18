@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:app_quanly_giaiui/core/theme/app_colors.dart';
 import 'package:app_quanly_giaiui/core/theme/app_typography.dart';
 import 'package:app_quanly_giaiui/core/utils/formatter_utils.dart';
+import 'package:app_quanly_giaiui/core/utils/validator_utils.dart';
 import 'package:app_quanly_giaiui/features/order/data/order_repository.dart';
 import 'package:app_quanly_giaiui/features/order/domain/cart_item.dart';
 import 'package:app_quanly_giaiui/features/order/domain/cart_store.dart';
@@ -35,6 +36,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     final ids = widget.draft['clearCartPriceIds'];
     return ids is List ? ids.whereType<int>().toSet() : null;
   }
+
   String get _paymentMethod =>
       widget.draft['paymentMethod'] as String? ?? 'Tiền mặt';
   String get _pickupMethod => widget.draft['pickupMethod'] as String;
@@ -45,8 +47,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   DateTime get _appointment => widget.draft['appointment'] as DateTime;
   String get _notes => widget.draft['notes'] as String? ?? '';
   bool get _usePoints => widget.draft['usePoints'] as bool? ?? false;
-  int get _pointsUsedEstimate =>
-      widget.draft['pointsUsedEstimate'] as int? ?? 0;
   num get _pointsDiscountEstimateVnd =>
       widget.draft['pointsDiscountEstimateVnd'] as num? ?? 0;
   String get _promotionCode => widget.draft['promotionCode'] as String? ?? '';
@@ -61,13 +61,15 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       (widget.draft['pickupDistanceMeters'] as num? ?? 0).toInt();
   num get _pickupDeliveryFeeVnd =>
       _createdBooking?.pickupDeliveryFeeVnd ??
-      widget.draft['pickupDeliveryFeeVnd'] as num? ?? 0;
+      widget.draft['pickupDeliveryFeeVnd'] as num? ??
+      0;
   num get _deliveryDistanceMeters =>
       _createdBooking?.deliveryDistanceMeters ??
       (widget.draft['deliveryDistanceMeters'] as num? ?? 0).toInt();
   num get _deliveryFeeVnd =>
       _createdBooking?.deliveryFeeVnd ??
-      widget.draft['deliveryFeeVnd'] as num? ?? 0;
+      widget.draft['deliveryFeeVnd'] as num? ??
+      0;
   num get _totalDeliveryFeeVnd => _pickupDeliveryFeeVnd + _deliveryFeeVnd;
 
   num get _estimatedOrderTotalVnd =>
@@ -87,15 +89,17 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       (_estimatedOrderTotalVnd +
               _totalDeliveryFeeVnd -
               _totalDiscountEstimateVnd)
-          .clamp(
-        0,
-        _estimatedOrderTotalVnd + _totalDeliveryFeeVnd,
-      );
+          .clamp(0, _estimatedOrderTotalVnd + _totalDeliveryFeeVnd);
 
   String _distanceLabel(num meters) =>
       '${(meters / 1000).toStringAsFixed(1)} km';
 
   Future<void> _submitOrder() async {
+    final appointmentError = ValidatorUtils.validateAppointment(_appointment);
+    if (appointmentError != null) {
+      setState(() => _errorMessage = appointmentError);
+      return;
+    }
     setState(() {
       _isSubmitting = true;
       _errorMessage = null;
@@ -218,18 +222,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           ),
           const SizedBox(height: 20),
           _SummarySection(
-            title: 'Thanh toán',
-            children: [
-              _SummaryRow(label: 'Hình thức', value: _paymentMethod),
-              const Text(
-                'Thanh toán sẽ được thực hiện khi cửa hàng hoàn tất kiểm nhận '
-                'và hóa đơn được tạo.',
-                style: TextStyle(color: AppColors.textSecondary),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          _SummarySection(
             title: 'Thông tin nhận và giao đồ',
             children: [
               _SummaryRow(
@@ -243,18 +235,17 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
               if (_address != null)
                 _SummaryRow(label: 'Địa chỉ lấy đồ', value: _address!),
               if (_deliveryAddress != null)
-                _SummaryRow(
-                  label: 'Địa chỉ giao đồ',
-                  value: _deliveryAddress!,
-                ),
+                _SummaryRow(label: 'Địa chỉ giao đồ', value: _deliveryAddress!),
               if (_pickupMethod == 'Tại nhà')
                 _SummaryRow(
-                  label: 'Phí lấy đồ · ${_distanceLabel(_pickupDistanceMeters)}',
+                  label:
+                      'Phí lấy đồ · ${_distanceLabel(_pickupDistanceMeters)}',
                   value: _formatVnd(_pickupDeliveryFeeVnd),
                 ),
               if (_deliveryMethod == 'Tại nhà')
                 _SummaryRow(
-                  label: 'Phí giao đồ · ${_distanceLabel(_deliveryDistanceMeters)}',
+                  label:
+                      'Phí giao đồ · ${_distanceLabel(_deliveryDistanceMeters)}',
                   value: _formatVnd(_deliveryFeeVnd),
                 ),
               if (_totalDeliveryFeeVnd > 0)
@@ -272,6 +263,11 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           ),
           const SizedBox(height: 20),
           _SummarySection(
+            title: 'Thanh toán',
+            children: [_SummaryRow(label: 'Hình thức', value: _paymentMethod)],
+          ),
+          const SizedBox(height: 20),
+          _SummarySection(
             title: _provideLaundryDetails ? 'Tạm tính' : 'Báo giá',
             children: [
               if (_provideLaundryDetails)
@@ -286,12 +282,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                   'Cửa hàng sẽ báo giá sau khi kiểm nhận đồ.',
                   style: TextStyle(color: AppColors.textSecondary),
                 ),
-              if (_provideLaundryDetails)
-                const Text(
-                  'Giá cuối cùng có thể được điều chỉnh sau khi cửa hàng kiểm nhận đồ.',
-                  style: TextStyle(color: AppColors.textSecondary),
-                )
-              else ...[
+              if (!_provideLaundryDetails) ...[
                 _SummaryRow(
                   label: 'Tổng tiền đơn hàng',
                   value: 'Cửa hàng sẽ báo giá',
@@ -315,12 +306,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                 if (_usePoints) ...[
                   _SummaryRow(
                     label: booking == null
-                        ? 'Điểm dự kiến sử dụng'
-                        : 'Điểm đã sử dụng',
-                    value: '${booking?.pointsUsed ?? _pointsUsedEstimate} điểm',
-                  ),
-                  _SummaryRow(
-                    label: booking == null
                         ? 'Giảm ước tính từ điểm'
                         : 'Giảm từ điểm',
                     value: _formatVnd(
@@ -338,9 +323,12 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                   emphasize: true,
                 ),
               ],
-              if (_promotionCode.isNotEmpty)
-                _SummaryRow(label: 'Mã khuyến mãi', value: _promotionCode),
             ],
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Giá cuối cùng có thể được điều chỉnh sau khi cửa hàng kiểm nhận đồ.',
+            style: TextStyle(color: AppColors.textSecondary),
           ),
           if (_errorMessage != null) ...[
             const SizedBox(height: 16),

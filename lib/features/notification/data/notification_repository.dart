@@ -2,6 +2,20 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:app_quanly_giaiui/core/utils/database_timestamp.dart';
 import 'package:app_quanly_giaiui/core/utils/formatter_utils.dart';
 
+String _localizedBookingStatusInMessage(String message) {
+  const labels = {
+    'ChoTiepNhan': 'Chờ tiếp nhận',
+    'DaXacNhan': 'Đã xác nhận',
+    'DaHuy': 'Đã hủy',
+    'HoanThanh': 'Hoàn thành',
+    'DaGiao': 'Đã giao',
+  };
+  return message.replaceAllMapped(
+    RegExp(r'(trạng thái\s*:?[ ]*)(ChoTiepNhan|DaXacNhan|DaHuy|HoanThanh|DaGiao)'),
+    (match) => '${match[1]}${labels[match[2]]}',
+  );
+}
+
 class LaundryNotification {
   const LaundryNotification({
     required this.id,
@@ -39,7 +53,9 @@ class LaundryNotification {
       id: (json['thongbaoid'] ?? json['ThongBaoID'] as num).toInt(),
       title: (json['tieude'] ?? json['TieuDe']) as String,
       message: FormatterUtils.formatOrderCodesInText(
-        (json['noidung'] ?? json['NoiDung']) as String,
+        _localizedBookingStatusInMessage(
+          (json['noidung'] ?? json['NoiDung']) as String,
+        ),
       ),
       sentAt: parseDatabaseTimestamp(
         (json['thoigiangui'] ?? json['ThoiGianGui']) as String,

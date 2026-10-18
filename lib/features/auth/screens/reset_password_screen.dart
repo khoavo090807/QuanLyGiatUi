@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -10,7 +8,9 @@ import 'package:app_quanly_giaiui/core/utils/validator_utils.dart';
 import 'package:app_quanly_giaiui/features/auth/data/auth_repository.dart';
 
 class ResetPasswordScreen extends StatefulWidget {
-  const ResetPasswordScreen({super.key});
+  const ResetPasswordScreen({required this.recoveryOtpVerified, super.key});
+
+  final bool recoveryOtpVerified;
 
   @override
   State<ResetPasswordScreen> createState() => _ResetPasswordScreenState();
@@ -23,69 +23,29 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   bool _isSaving = false;
   bool _obscurePassword = true;
   bool _obscureConfirmation = true;
-  bool _isCheckingRecoveryLink = true;
   bool _hasRecoverySession = false;
   String? _recoveryAccountName;
   String? _recoveryAccountEmail;
   String? _errorMessage;
-  StreamSubscription<AuthState>? _authSubscription;
-  Timer? _recoveryCheckTimeout;
 
   @override
   void initState() {
     super.initState();
     final auth = Supabase.instance.client.auth;
-    _hasRecoverySession = auth.currentSession != null;
-    _isCheckingRecoveryLink = !_hasRecoverySession;
-    _setRecoveryAccount(auth.currentUser);
-
-    // The app link can open this route a moment before Supabase finishes
-    // exchanging its one-time code for a recovery session. Listen for that
-    // event so we don't incorrectly show the expired-link screen meanwhile.
-    _authSubscription = auth.onAuthStateChange.listen(
-      (state) {
-        if (state.event == AuthChangeEvent.passwordRecovery && mounted) {
-          _recoveryCheckTimeout?.cancel();
-          setState(() {
-            _hasRecoverySession = state.session != null;
-            _isCheckingRecoveryLink = false;
-            _setRecoveryAccount(state.session?.user);
-          });
-        }
-      },
-      onError: (Object _) => _finishRecoveryCheck(),
-    );
-
-    if (_isCheckingRecoveryLink) {
-      _recoveryCheckTimeout = Timer(
-        const Duration(seconds: 10),
-        _finishRecoveryCheck,
-      );
-    }
-  }
-
-  void _finishRecoveryCheck() {
-    if (!mounted || !_isCheckingRecoveryLink) return;
-    _recoveryCheckTimeout?.cancel();
-    setState(() {
-      _hasRecoverySession =
-          Supabase.instance.client.auth.currentSession != null;
-      _isCheckingRecoveryLink = false;
-      _setRecoveryAccount(Supabase.instance.client.auth.currentUser);
-    });
+    _hasRecoverySession =
+        widget.recoveryOtpVerified && auth.currentSession != null;
+    _setRecoveryAccount(_hasRecoverySession ? auth.currentUser : null);
   }
 
   void _setRecoveryAccount(User? user) {
     final metadata = user?.userMetadata;
-    _recoveryAccountName = metadata?['full_name'] as String? ??
-        metadata?['name'] as String?;
+    _recoveryAccountName =
+        metadata?['full_name'] as String? ?? metadata?['name'] as String?;
     _recoveryAccountEmail = user?.email;
   }
 
   @override
   void dispose() {
-    _recoveryCheckTimeout?.cancel();
-    _authSubscription?.cancel();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
@@ -108,7 +68,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
         setState(() {
           _errorMessage = error is AuthException
               ? error.message
-              : 'Không thể cập nhật mật khẩu. Hãy yêu cầu liên kết mới.';
+              : 'Không thể cập nhật mật khẩu. Hãy yêu cầu mã OTP mới.';
         });
       }
     } finally {
@@ -137,18 +97,13 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                   ),
                   const SizedBox(height: 20),
                   Text(
-                    _isCheckingRecoveryLink
-                        ? 'Đang xác minh liên kết đặt lại mật khẩu...'
-                        : hasRecoverySession
+                    hasRecoverySession
                         ? 'Tạo mật khẩu mới cho tài khoản của bạn.'
-                        : 'Liên kết không hợp lệ hoặc đã hết hạn.',
+                        : 'Mã OTP không hợp lệ hoặc đã hết hạn.',
                     style: AppTypography.bodyText,
                     textAlign: TextAlign.center,
                   ),
-                  if (_isCheckingRecoveryLink) ...[
-                    const SizedBox(height: 24),
-                    const Center(child: CircularProgressIndicator()),
-                  ] else if (hasRecoverySession) ...[
+                  if (hasRecoverySession) ...[
                     const SizedBox(height: 24),
                     _RecoveryAccountCard(
                       name: _recoveryAccountName,
@@ -229,7 +184,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                     TextButton(
                       onPressed: () =>
                           context.goNamed(AppRoutes.forgotPassword),
-                      child: const Text('Yêu cầu liên kết mới'),
+                      child: const Text('Yêu cầu mã OTP mới'),
                     ),
                   ],
                 ],
