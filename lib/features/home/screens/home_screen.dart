@@ -151,9 +151,6 @@ class HomeScreenState extends State<HomeScreen> {
                     const SizedBox(height: 16),
                     SectionHeader(
                       title: AppStrings.services,
-                      actionText: AppStrings.seeAll,
-                      onActionTap: () =>
-                          context.pushNamed(AppRoutes.createOrder),
                     ),
                     _buildServicesGrid(context, data.prices),
                     const SizedBox(height: 24),

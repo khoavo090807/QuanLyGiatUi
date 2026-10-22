@@ -187,7 +187,17 @@ class AuthRepository {
   }
 
   Future<void> requestPasswordReset(String email) async {
-    await _client.auth.resetPasswordForEmail(email.trim());
+    final normalizedEmail = email.trim();
+    final exists = await _client.rpc(
+      'customer_email_exists',
+      params: {'p_email': normalizedEmail},
+    );
+    if (exists != true) {
+      throw const AuthException(
+        'Tài khoản email này chưa được đăng kí. Hãy thử lại hoặc đăng kí tài khoản mới',
+      );
+    }
+    await _client.auth.resetPasswordForEmail(normalizedEmail);
   }
 
   Future<void> verifyPasswordResetOtp({

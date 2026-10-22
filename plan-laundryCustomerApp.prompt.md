@@ -61,7 +61,7 @@ lib/
 ### Phase 3: Order Flow (Bước 3)
 11. Đặt đơn: chọn dịch vụ → chọn số lượng/loại đồ
 12. Chọn hình thức: mang đến tự / yêu cầu lấy tận nơi
-13. Chọn địa chỉ lấy đồ (nếu giao nhận)
+13. Chọn địa chỉ nhận đồ (nếu giao nhận)
 14. Chọn thời gian lấy/trả đồ
 15. Ghi chú đặc biệt (quần áo nhạy cảm, dị ứng...)
 16. Xác nhận đơn hàng

@@ -31,6 +31,13 @@ class StaffBookingRepository {
     );
   }
 
+  Future<void> advanceDelivery(int orderId) async {
+    await _dio.post<void>(
+      'staff/orders/$orderId/delivery-progress',
+      options: await _authorizedOptions(),
+    );
+  }
+
   Future<List<Map<String, dynamic>>> getAssignedBookings() async {
     final payload = await _getJsonMap('staff/bookings');
     final data = payload['data'];

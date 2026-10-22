@@ -9,6 +9,10 @@ import 'package:app_quanly_giaiui/core/theme/app_colors.dart';
 import 'package:app_quanly_giaiui/core/theme/app_typography.dart';
 import 'package:app_quanly_giaiui/features/auth/data/auth_repository.dart';
 
+String? _pendingSignupName;
+String? _pendingSignupEmail;
+DateTime? _pendingSignupResendAt;
+
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
 
@@ -26,11 +30,25 @@ class _RegisterScreenState extends State<RegisterScreen> {
   DateTime? _resendAvailableAt;
   Timer? _resendTimer;
   String? _errorMessage;
+  String? _infoMessage;
   String? _registrationError;
   final _name = TextEditingController();
   final _email = TextEditingController();
   final _password = TextEditingController();
   final _otp = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    final email = _pendingSignupEmail;
+    if (email != null) {
+      _name.text = _pendingSignupName ?? '';
+      _email.text = email;
+      _otpSent = true;
+      _resendAvailableAt = _pendingSignupResendAt;
+      _startResendTimer();
+    }
+  }
 
   @override
   void dispose() {
@@ -43,20 +61,25 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   Future<void> _registerWithEmail() async {
-    if (_isLoading || _resendSeconds > 0) return;
+    if (_isLoading || (_otpSent && _resendSeconds > 0)) return;
     if (_name.text.trim().isEmpty ||
         !_email.text.contains('@') ||
         _password.text.length < 6) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Nhập họ tên, Gmail hợp lệ và mật khẩu tối thiểu 6 ký tự.',
+            'Nhập họ tên, Email hợp lệ và mật khẩu tối thiểu 6 ký tự.',
           ),
         ),
       );
       return;
     }
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+      _infoMessage = null;
+      _registrationError = null;
+    });
     try {
       final registered = await AuthRepository().signUpCustomer(
         fullName: _name.text,
@@ -67,16 +90,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
       if (!registered) {
         setState(() {
           _registrationError =
-              'Tài khoản Gmail này đã đăng ký. Vui lòng đăng nhập.';
+              'Tài khoản Email này đã đăng ký. Vui lòng đăng nhập.';
         });
         return;
       }
       setState(() {
         _registrationError = null;
         _errorMessage = null;
+        _infoMessage = null;
         _otpSent = true;
         _resendAvailableAt = DateTime.now().add(const Duration(minutes: 3));
       });
+      _rememberPendingSignup();
       _startResendTimer();
     } catch (error) {
       if (mounted) {
@@ -86,8 +111,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
             _resendAvailableAt = DateTime.now().add(
               Duration(seconds: retryAfter),
             );
-            _errorMessage =
-                'Mã OTP đã gửi vẫn còn hiệu lực. Vui lòng chờ rồi thử đăng ký lại.';
+            final pendingEmail = _pendingSignupEmail;
+            final hasPendingOtp = pendingEmail == null ||
+                pendingEmail.toLowerCase() == _email.text.trim().toLowerCase();
+            if (hasPendingOtp) {
+              _otpSent = true;
+              _rememberPendingSignup();
+              _infoMessage =
+                  'Mã OTP đã được gửi và vẫn còn hiệu lực. Hãy kiểm tra email rồi nhập mã bên dưới. Bạn có thể yêu cầu mã mới sau khi hết thời gian chờ.';
+            } else {
+              _resendAvailableAt = _pendingSignupResendAt;
+              _infoMessage = _pendingSignupResendAt?.isAfter(DateTime.now()) ==
+                      true
+                  ? 'Chưa thể gửi mã mới lúc này. Mã đã gửi đến $pendingEmail vẫn còn hiệu lực; bạn có thể tiếp tục nhập mã đó.'
+                  : 'Chưa thể gửi mã mới lúc này. Vui lòng chờ rồi thử lại.';
+            }
           } else {
             _errorMessage = 'Không thể đăng ký: $error';
           }
@@ -97,6 +135,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  void _rememberPendingSignup() {
+    _pendingSignupName = _name.text.trim();
+    _pendingSignupEmail = _email.text.trim();
+    _pendingSignupResendAt = _resendAvailableAt;
+  }
+
+  void _clearPendingSignup() {
+    _pendingSignupName = null;
+    _pendingSignupEmail = null;
+    _pendingSignupResendAt = null;
   }
 
   int? _signupRetryAfterSeconds(Object error) {
@@ -113,7 +163,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
       if (!mounted) return;
       final seconds =
           _resendAvailableAt?.difference(DateTime.now()).inSeconds ?? 0;
-      setState(() => _resendSeconds = seconds > 0 ? seconds : 0);
+      setState(() {
+        _resendSeconds = seconds > 0 ? seconds : 0;
+        if (_resendSeconds == 0) {
+          if (_otpSent) {
+            _otpSent = false;
+            _otp.clear();
+          }
+          _resendAvailableAt = null;
+          _infoMessage = null;
+          _clearPendingSignup();
+        }
+      });
       if (_resendSeconds == 0) _resendTimer?.cancel();
     }
 
@@ -135,6 +196,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     setState(() {
       _isLoading = true;
       _errorMessage = null;
+      _infoMessage = null;
     });
     try {
       await AuthRepository().resendSignupConfirmationOtp(_email.text);
@@ -143,13 +205,25 @@ class _RegisterScreenState extends State<RegisterScreen> {
         _otp.clear();
         _resendAvailableAt = DateTime.now().add(const Duration(minutes: 3));
       });
+      _rememberPendingSignup();
       _startResendTimer();
-    } catch (_) {
+    } catch (error) {
       if (mounted) {
-        setState(
-          () => _errorMessage =
-              'Chưa thể gửi lại mã. Hãy chờ mã hiện tại hết hạn rồi thử lại.',
-        );
+        final retryAfter = _signupRetryAfterSeconds(error);
+        setState(() {
+          if (retryAfter != null) {
+            _resendAvailableAt = DateTime.now().add(
+              Duration(seconds: retryAfter),
+            );
+            _rememberPendingSignup();
+            _infoMessage =
+                'Mã OTP đã được gửi và vẫn còn hiệu lực. Hãy kiểm tra email rồi nhập mã bên dưới. Bạn có thể yêu cầu mã mới sau khi hết thời gian chờ.';
+          } else {
+            _errorMessage =
+                'Chưa thể gửi lại mã. Hãy chờ mã hiện tại hết hạn rồi thử lại.';
+          }
+        });
+        if (retryAfter != null) _startResendTimer();
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -168,7 +242,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
     });
     try {
       await AuthRepository().verifySignupOtp(email: _email.text, token: token);
-      if (mounted) context.go(AppRoutes.splashPath);
+      _clearPendingSignup();
+      if (mounted) {
+        context.go(AppRoutes.splashPath);
+      }
     } catch (_) {
       if (mounted) {
         setState(() => _errorMessage = 'Mã OTP không đúng hoặc đã hết hạn.');
@@ -193,13 +270,38 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 const SizedBox(height: 8),
                 Text(
                   _otpSent
-                      ? 'Nhập mã OTP đã gửi đến Gmail để xác minh tài khoản. Mã có hiệu lực trong 3 phút.'
-                      : 'Tạo tài khoản bằng Gmail và mật khẩu.',
+                      ? (_resendSeconds > 0
+                          ? 'Nhập mã OTP đã gửi đến Email để xác minh tài khoản. Mã có hiệu lực trong 3 phút.'
+                          : 'Mã OTP đã hết thời gian hiệu lực. Nhập thông tin để đăng ký và nhận mã mới.')
+                      : 'Tạo tài khoản bằng Email và mật khẩu.',
                   style: AppTypography.bodyText.copyWith(
                     color: AppColors.textSecondary,
                   ),
                 ),
                 const SizedBox(height: 28),
+                if (_infoMessage case final message?) ...[
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: message.startsWith('Chưa thể gửi mã mới lúc này')
+                          ? AppColors.errorLight
+                          : AppColors.primaryLight,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      message,
+                      style: AppTypography.bodySmall.copyWith(
+                        color: message.startsWith(
+                          'Chưa thể gửi mã mới lúc này',
+                        )
+                            ? AppColors.error
+                            : AppColors.primary,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
                 if (!_otpSent) ...[
                   TextField(
                     controller: _name,
@@ -223,7 +325,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       }
                     },
                     decoration: const InputDecoration(
-                      labelText: 'Gmail',
+                      labelText: 'Email',
                       prefixIcon: Icon(Icons.email_outlined),
                     ),
                   ),
@@ -312,7 +414,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 const SizedBox(height: 16),
                 if (!_otpSent)
                   ElevatedButton(
-                    onPressed: _isLoading || _resendSeconds > 0
+                    onPressed: _isLoading || (_otpSent && _resendSeconds > 0)
                         ? null
                         : _registerWithEmail,
                     child: _isLoading
@@ -320,11 +422,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             dimension: 20,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : Text(
-                            _resendSeconds > 0
-                                ? 'Đăng ký lại sau ${_formatRemainingTime()}'
-                                : 'Đăng ký bằng Gmail',
-                          ),
+                        : const Text('Đăng ký bằng Email'),
                   )
                 else ...[
                   ElevatedButton(
@@ -348,7 +446,33 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 : 'Gửi lại mã OTP',
                           ),
                   ),
+                  TextButton(
+                    onPressed: _isVerifying || _isLoading
+                        ? null
+                        : () => setState(() {
+                            _otpSent = false;
+                            _otp.clear();
+                            _email.clear();
+                            _infoMessage = null;
+                            _errorMessage = null;
+                            _registrationError = null;
+                          }),
+                    child: const Text('Dùng email khác'),
+                  ),
                 ],
+                if (!_otpSent && _pendingSignupEmail != null)
+                  TextButton(
+                    onPressed: () => setState(() {
+                      _name.text = _pendingSignupName ?? '';
+                      _email.text = _pendingSignupEmail!;
+                      _otpSent = true;
+                      _infoMessage = null;
+                      _errorMessage = null;
+                      _resendAvailableAt = _pendingSignupResendAt;
+                      _startResendTimer();
+                    }),
+                    child: const Text('Tiếp tục nhập mã OTP đã nhận'),
+                  ),
                 const SizedBox(height: 24),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,

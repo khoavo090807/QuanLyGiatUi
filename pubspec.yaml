@@ -18,6 +18,8 @@ dependencies:
   flutter_bloc: ^9.1.1
   flutter_local_notifications: ^22.3.1
   flutter_image_compress: ^2.5.1
+  flutter_localizations:
+    sdk: flutter
   flutter_secure_storage: ^11.2.0
   flutter_svg: ^2.3.0
   formz: ^0.8.0
@@ -27,7 +29,7 @@ dependencies:
   google_fonts: ^8.2.1
   google_maps_flutter: ^2.18.1
   google_sign_in: ^7.2.0
-  intl: ^0.20.3
+  intl: ^0.20.2
   image_picker: ^1.2.1
   lottie: ^3.6.1
   shared_preferences: ^2.5.5

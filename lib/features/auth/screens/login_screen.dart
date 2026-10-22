@@ -36,8 +36,8 @@ class _LoginScreenState extends State<LoginScreen> {
         _passwordController.text.isEmpty) {
       setState(
         () => _loginError = _isStaffLogin
-            ? 'Nhập gmail và mật khẩu do quản trị viên cấp.'
-            : 'Vui lòng nhập gmail và mật khẩu.',
+            ? 'Nhập email và mật khẩu do quản trị viên cấp.'
+            : 'Vui lòng nhập email và mật khẩu.',
       );
       return;
     }
@@ -137,7 +137,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 Text(
                   _isStaffLogin
                       ? 'Dành cho nhân viên, quản lý và chủ cửa hàng.'
-                      : 'Đăng nhập bằng gmail và mật khẩu hoặc tài khoản Google.',
+                      : 'Đăng nhập bằng email và mật khẩu hoặc tài khoản Google.',
                   style: AppTypography.bodyText.copyWith(color: AppColors.textSecondary),
                   textAlign: TextAlign.center,
                 ),
@@ -173,7 +173,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     }
                   },
                   decoration: const InputDecoration(
-                    labelText: 'Gmail tài khoản',
+                    labelText: 'Email tài khoản',
                     prefixIcon: Icon(Icons.email_outlined),
                   ),
                 ),

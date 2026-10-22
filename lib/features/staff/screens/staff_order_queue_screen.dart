@@ -10,6 +10,8 @@ import 'package:app_quanly_giaiui/core/utils/formatter_utils.dart';
 import 'package:app_quanly_giaiui/features/auth/data/auth_repository.dart';
 import 'package:app_quanly_giaiui/features/order/data/order_repository.dart';
 import 'package:app_quanly_giaiui/features/order/widgets/order_confirmation_info.dart';
+import 'package:app_quanly_giaiui/features/staff/data/staff_booking_repository.dart';
+import 'package:app_quanly_giaiui/features/staff/screens/staff_delivery_confirmation_screen.dart';
 
 class StaffOrderQueueScreen extends StatefulWidget {
   const StaffOrderQueueScreen({super.key});
@@ -21,6 +23,7 @@ class StaffOrderQueueScreen extends StatefulWidget {
 class _StaffOrderQueueScreenState extends State<StaffOrderQueueScreen> {
   final _authRepository = AuthRepository();
   final _orderRepository = OrderRepository();
+  final _staffRepository = StaffBookingRepository();
   late Future<_StaffQueueData> _queueFuture;
   bool _isUpdating = false;
 
@@ -69,18 +72,31 @@ class _StaffOrderQueueScreenState extends State<StaffOrderQueueScreen> {
     if (mounted) await _refresh();
   }
 
-  List<String> _nextStatuses(String status) {
-    return switch (status) {
+  List<String> _nextStatuses(LaundryOrderRecord order) {
+    return switch (order.status) {
       'Chờ tiếp nhận' => ['Đã tiếp nhận', 'Đã hủy'],
       'Đã tiếp nhận' => ['Đang giặt', 'Đã hủy'],
       'Đang giặt' => ['Hoàn thành giặt'],
-      'Hoàn thành giặt' => ['Đang giao', 'Đã giao'],
+      'Hoàn thành giặt' =>
+        order.deliveryMethod == 'Tại nhà'
+            ? ['Đang giao']
+            : ['Đang giao', 'Đã giao'],
       'Đang giao' => ['Đã giao'],
       _ => const [],
     };
   }
 
   Future<void> _transition(LaundryOrderRecord order, String newStatus) async {
+    if (newStatus == 'Đã giao' && order.deliveryMethod == 'Tại nhà') {
+      final confirmed = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (_) => StaffDeliveryConfirmationScreen(order: order),
+        ),
+      );
+      if (confirmed == true && mounted) await _refresh();
+      return;
+    }
+
     String? reason;
     if (newStatus == 'Đã hủy') {
       reason = await _requestCancellationReason();
@@ -90,11 +106,15 @@ class _StaffOrderQueueScreenState extends State<StaffOrderQueueScreen> {
     setState(() => _isUpdating = true);
     try {
       if (order.orderId != null) {
-        await _orderRepository.transitionStatus(
-          orderId: order.orderId!,
-          newStatus: newStatus,
-          reason: reason,
-        );
+        if (newStatus == 'Đang giao' && order.deliveryMethod == 'Tại nhà') {
+          await _staffRepository.advanceDelivery(order.orderId!);
+        } else {
+          await _orderRepository.transitionStatus(
+            orderId: order.orderId!,
+            newStatus: newStatus,
+            reason: reason,
+          );
+        }
       }
       await _refresh();
     } catch (error) {
@@ -205,7 +225,7 @@ class _StaffOrderQueueScreenState extends State<StaffOrderQueueScreen> {
               separatorBuilder: (context, index) => const SizedBox(height: 10),
               itemBuilder: (context, index) => _StaffOrderCard(
                 order: queue.orders[index],
-                nextStatuses: _nextStatuses(queue.orders[index].status),
+                nextStatuses: _nextStatuses(queue.orders[index]),
                 isUpdating: _isUpdating,
                 onInspect: () =>
                     _openInspection(queue.orders[index].bookingId!),
@@ -273,7 +293,17 @@ class _StaffOrderCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isBooking = order.orderId == null;
-    final actions = isBooking ? const ['Kiểm tra & tạo đơn'] : nextStatuses;
+    final actions = isBooking
+        ? const ['Kiểm tra & tạo đơn']
+        : nextStatuses
+              .where((status) {
+                if (order.deliveryMethod == 'Tại nhà' &&
+                    (status == 'Đang giao' || status == 'Đã giao')) {
+                  return order.canConfirmDelivery;
+                }
+                return true;
+              })
+              .toList(growable: false);
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(

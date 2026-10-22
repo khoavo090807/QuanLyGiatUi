@@ -456,18 +456,26 @@ class _StaffBookingInspectionScreenState
               _reviewStatusCard(),
               const SizedBox(height: 10),
               FilledButton.icon(
-                onPressed: (_isSaving || _isEstimating || _estimate == null)
+                onPressed: (_isSaving || _isEstimating)
                     ? null
+                    : _estimate == null
+                    ? _calculateEstimate
                     : _saveDraft,
-                icon: _isSaving
+                icon: _isSaving || _isEstimating
                     ? const SizedBox(
                         width: 18,
                         height: 18,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Icon(Icons.save_outlined),
+                    : Icon(
+                        _estimate == null
+                            ? Icons.calculate_outlined
+                            : Icons.save_outlined,
+                      ),
                 label: Text(
-                  _draftSaved
+                  _estimate == null
+                      ? 'Tính giá để lưu Booking'
+                      : _draftSaved
                       ? 'Lưu lại cập nhật Booking'
                       : 'Lưu Booking cho khách xem',
                 ),

@@ -23,7 +23,7 @@ class AppStrings {
   static const String onboarding1Title = 'Giặt ủi dễ dàng';
   static const String onboarding1Desc = 'Đặt dịch vụ giặt ủi chuyên nghiệp chỉ với vài bước đơn giản';
   static const String onboarding2Title = 'Giao nhận tận nhà';
-  static const String onboarding2Desc = 'Chúng tôi sẽ đến lấy và giao lại đồ sạch sẽ ngay tại cửa nhà bạn';
+  static const String onboarding2Desc = 'Chúng tôi sẽ đến nhận và giao lại đồ sạch sẽ ngay tại cửa nhà bạn';
   static const String onboarding3Title = 'Theo dõi thời gian thực';
   static const String onboarding3Desc = 'Xem trạng thái đơn hàng của bạn bất cứ lúc nào, ở bất cứ đâu';
   static const String getStarted = 'Bắt đầu ngay';
@@ -55,10 +55,10 @@ class AppStrings {
   static const String selectItems = 'Chọn loại đồ';
   static const String deliveryMethod = 'Hình thức giao nhận';
   static const String selfDelivery = 'Mang đến cửa hàng';
-  static const String pickupDelivery = 'Lấy tận nơi';
+  static const String pickupDelivery = 'Nhận tận nơi';
   static const String selectAddress = 'Chọn địa chỉ';
   static const String selectTime = 'Chọn thời gian';
-  static const String pickupTime = 'Thời gian lấy đồ';
+  static const String pickupTime = 'Thời gian nhận đồ';
   static const String returnTime = 'Thời gian nhận lại';
   static const String specialNotes = 'Ghi chú đặc biệt';
   static const String notesHint = 'Ví dụ: Quần áo dị ứng hoá chất, đồ nhạy cảm...';

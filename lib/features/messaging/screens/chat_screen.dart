@@ -160,8 +160,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _loadOlderMessages() async {
-    if (_messages.isEmpty || !_hasOlderMessages || _loadingOlderMessages)
+    if (_messages.isEmpty || !_hasOlderMessages || _loadingOlderMessages) {
       return;
+    }
     setState(() => _loadingOlderMessages = true);
     final oldMaxExtent = _scrollController.hasClients
         ? _scrollController.position.maxScrollExtent
@@ -600,7 +601,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                           width: 220,
                                           height: 180,
                                           fit: BoxFit.cover,
-                                          errorBuilder: (_, __, ___) =>
+                                          errorBuilder: (_, _, _) =>
                                               const SizedBox(
                                                 width: 220,
                                                 height: 80,

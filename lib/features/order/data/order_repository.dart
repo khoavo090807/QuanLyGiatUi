@@ -289,6 +289,9 @@ class LaundryOrderRecord {
     this.pickupDeliveryFeeVnd = 0,
     this.deliveryDistanceMeters = 0,
     this.deliveryLegFeeVnd = 0,
+    this.customerName,
+    this.customerPhone,
+    this.canConfirmDelivery = false,
   });
 
   final int? orderId;
@@ -319,6 +322,9 @@ class LaundryOrderRecord {
   final num pickupDeliveryFeeVnd;
   final int deliveryDistanceMeters;
   final num deliveryLegFeeVnd;
+  final String? customerName;
+  final String? customerPhone;
+  final bool canConfirmDelivery;
 
   String? get logisticsSummary {
     final methods = <String>[];
@@ -348,6 +354,9 @@ class LaundryOrderRecord {
       orderId: _asInt(json['DonHangID']),
       bookingId: _asInt(json['BookingID'] ?? booking?['BookingID']),
       bookingNumber: _asString(booking?['MaBooking']),
+      customerName: _asString((json['KhachHang'] as Map?)?['HoTen']),
+      customerPhone: _asString((json['KhachHang'] as Map?)?['SoDienThoai']),
+      canConfirmDelivery: json['CanConfirmDelivery'] == true,
       pickupMethod: _asString(booking?['HinhThucNhanDo']),
       deliveryMethod: _deliveryMethodOf(booking),
       pickupAddress: _asString(booking?['DiaChiNhan']),

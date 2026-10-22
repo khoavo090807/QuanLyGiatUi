@@ -218,27 +218,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
         title: const Text('Đăng xuất'),
         content: const Text(AppStrings.logoutConfirm),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text(AppStrings.cancel),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              try {
-                await _authRepository.signOut();
-              } catch (error) {
-                if (mounted) {
-                  ScaffoldMessenger.of(this.context).showSnackBar(
-                    SnackBar(content: Text('Không thể đăng xuất: $error')),
-                  );
-                }
-                return;
-              }
-              if (mounted) this.context.goNamed(AppRoutes.login);
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
-            child: const Text('Đăng xuất'),
+          Row(
+            children: [
+              Expanded(
+                child: TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text(AppStrings.cancel),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: () async {
+                    Navigator.pop(context);
+                    try {
+                      await _authRepository.signOut();
+                    } catch (error) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(this.context).showSnackBar(
+                          SnackBar(content: Text('Không thể đăng xuất: $error')),
+                        );
+                      }
+                      return;
+                    }
+                    if (mounted) this.context.goNamed(AppRoutes.login);
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.error,
+                  ),
+                  child: const Text('Đăng xuất'),
+                ),
+              ),
+            ],
           ),
         ],
       ),

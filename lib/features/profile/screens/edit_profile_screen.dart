@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:app_quanly_giaiui/features/auth/data/auth_repository.dart';
+import 'package:app_quanly_giaiui/core/utils/validator_utils.dart';
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -12,6 +13,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   final _repository = AuthRepository();
   final _formKey = GlobalKey<FormState>();
   final _name = TextEditingController();
+  final _phoneController = TextEditingController();
   String? _email;
   String? _phone;
   String? _address;
@@ -43,6 +45,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           _name.text = profile.displayName;
           _email = profile.email;
           _phone = profile.phone;
+          _phoneController.text = profile.phone ?? '';
           _address = profile.address;
           _avatarUrl = profile.avatarUrl;
           _loadError = null;
@@ -100,7 +103,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       await _repository.updateCustomerProfile(
         fullName: _name.text,
         email: _email,
-        phone: _phone,
+        phone: _phoneController.text,
         address: _address,
       );
       if (mounted) Navigator.pop(context);
@@ -118,6 +121,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   void dispose() {
     _name.dispose();
+    _phoneController.dispose();
     super.dispose();
   }
 
@@ -174,6 +178,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   validator: (value) => value == null || value.trim().isEmpty
                       ? 'Vui lòng nhập họ tên'
                       : null,
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _phoneController,
+                  keyboardType: TextInputType.phone,
+                  decoration: const InputDecoration(labelText: 'Số điện thoại'),
+                  validator: ValidatorUtils.validatePhone,
                 ),
               ],
             ),

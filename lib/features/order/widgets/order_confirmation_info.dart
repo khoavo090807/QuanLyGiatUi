@@ -100,7 +100,7 @@ class OrderConfirmationInfo extends StatelessWidget {
           ),
         if (details.address != null && details.address!.isNotEmpty)
           _Row(
-            label: 'Địa chỉ lấy đồ',
+            label: 'Địa chỉ nhận đồ',
             value: details.address!,
             lightText: lightText,
           ),
@@ -179,7 +179,7 @@ class OrderConfirmationInfo extends StatelessWidget {
             lightText: lightText,
           ),
         _Row(
-          label: 'Tổng tiền cuối cùng khách trả',
+          label: 'Tổng tiền thanh toán',
           value: details.finalTotalVnd != null
               ? _formatVnd(details.finalTotalVnd!)
               : order.hasLaundryDetails
