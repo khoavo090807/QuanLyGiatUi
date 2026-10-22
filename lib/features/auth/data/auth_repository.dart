@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:app_quanly_giaiui/features/auth/data/staff_api_auth_repository.dart';
 import 'package:app_quanly_giaiui/core/config/supabase_config.dart';
 import 'package:app_quanly_giaiui/features/notification/services/notification_service.dart';
 
@@ -15,6 +16,16 @@ class AuthRepository {
   final SupabaseClient _client;
 
   Future<AuthenticatedProfile?> getCurrentProfile() async {
+    final staffAuth = StaffApiAuthRepository.instance;
+    if (staffAuth.isSignedIn) {
+      final staff = staffAuth.user ?? const <String, dynamic>{};
+      return AuthenticatedProfile(
+        displayName: staff['name'] as String? ?? 'Nhân viên',
+        phone: staff['phone'] as String?,
+        email: staff['email'] as String?,
+        roles: staffAuth.roles,
+      );
+    }
     final user = _client.auth.currentUser;
     if (user == null) return null;
 
@@ -46,6 +57,8 @@ class AuthRepository {
   }
 
   Future<List<String>> getCurrentRoles() async {
+    final staffAuth = StaffApiAuthRepository.instance;
+    if (staffAuth.isSignedIn) return staffAuth.roles;
     final roles = await _client.rpc('get_current_roles');
     return (roles as List<dynamic>).whereType<String>().toList(growable: false);
   }
@@ -316,8 +329,10 @@ class AuthRepository {
   }
 
   Future<void> signOut() async {
+    final staffAuth = StaffApiAuthRepository.instance;
+    if (staffAuth.isSignedIn) await staffAuth.signOut();
     await NotificationService.instance.unregisterCurrentDevice();
-    await _client.auth.signOut();
+    if (_client.auth.currentSession != null) await _client.auth.signOut();
   }
 
   Future<void> updateCustomerProfile({

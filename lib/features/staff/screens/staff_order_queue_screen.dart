@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:app_quanly_giaiui/core/navigation/app_routes.dart';
@@ -28,11 +31,25 @@ class _StaffOrderQueueScreenState extends State<StaffOrderQueueScreen> {
   }
 
   Future<_StaffQueueData> _loadQueue() async {
-    final roles = await _authRepository.getCurrentRoles();
+    final roles = await _authRepository.getCurrentRoles().timeout(
+      const Duration(seconds: 10),
+      onTimeout: () {
+        throw TimeoutException(
+          'Không lấy được quyền nhân viên từ phiên đăng nhập. Hãy đăng xuất và đăng nhập lại.',
+        );
+      },
+    );
     if (!roles.any({'Nhân viên', 'Quản lý', 'Chủ cửa hàng'}.contains)) {
       return _StaffQueueData(roles: roles, orders: const []);
     }
-    final orders = await _orderRepository.getStaffQueue();
+    final orders = await _orderRepository.getStaffQueue().timeout(
+      const Duration(seconds: 45),
+      onTimeout: () {
+        throw TimeoutException(
+          'Máy chủ mất quá nhiều thời gian để tải đơn. Kiểm tra kết nối API Laravel rồi thử lại.',
+        );
+      },
+    );
     return _StaffQueueData(roles: roles, orders: orders);
   }
 
@@ -42,6 +59,14 @@ class _StaffOrderQueueScreenState extends State<StaffOrderQueueScreen> {
       _queueFuture = future;
     });
     await future;
+  }
+
+  Future<void> _openInspection(int bookingId) async {
+    await context.pushNamed<bool>(
+      AppRoutes.staffBookingInspection,
+      pathParameters: {'id': bookingId.toString()},
+    );
+    if (mounted) await _refresh();
   }
 
   List<String> _nextStatuses(String status) {
@@ -64,12 +89,7 @@ class _StaffOrderQueueScreenState extends State<StaffOrderQueueScreen> {
 
     setState(() => _isUpdating = true);
     try {
-      if (order.orderId == null && order.bookingId != null) {
-        await _orderRepository.confirmBooking(
-          order.bookingId!,
-          hasDetails: order.hasLaundryDetails,
-        );
-      } else if (order.orderId != null) {
+      if (order.orderId != null) {
         await _orderRepository.transitionStatus(
           orderId: order.orderId!,
           newStatus: newStatus,
@@ -124,17 +144,20 @@ class _StaffOrderQueueScreenState extends State<StaffOrderQueueScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Yêu cầu và đơn hàng'),
+        title: const Text('Nhận đồ & đơn hàng của bạn'),
         actions: [
-          IconButton(
-            tooltip: 'Tin nhắn khách hàng',
-            onPressed: () => context.push(AppRoutes.messagesPath),
-            icon: const Icon(Icons.chat_bubble_outline),
-          ),
           IconButton(
             tooltip: 'Làm mới',
             onPressed: _refresh,
             icon: const Icon(Icons.refresh),
+          ),
+          IconButton(
+            tooltip: 'Đăng xuất',
+            onPressed: () async {
+              await _authRepository.signOut();
+              if (context.mounted) context.goNamed(AppRoutes.login);
+            },
+            icon: const Icon(Icons.logout),
           ),
         ],
       ),
@@ -146,7 +169,7 @@ class _StaffOrderQueueScreenState extends State<StaffOrderQueueScreen> {
           }
           if (snapshot.hasError) {
             return _QueueState(
-              message: 'Không tải được hàng đợi đơn hàng.',
+              message: _queueErrorMessage(snapshot.error),
               action: TextButton(
                 onPressed: _refresh,
                 child: const Text('Thử lại'),
@@ -155,8 +178,12 @@ class _StaffOrderQueueScreenState extends State<StaffOrderQueueScreen> {
           }
 
           final queue = snapshot.data!;
-          if (!queue.roles.any((role) =>
-              role == 'Nhân viên' || role == 'Chủ cửa hàng' || role.startsWith('Quản lý'))) {
+          if (!queue.roles.any(
+            (role) =>
+                role == 'Nhân viên' ||
+                role == 'Chủ cửa hàng' ||
+                role.startsWith('Quản lý'),
+          )) {
             return const _QueueState(
               icon: Icons.lock_outline,
               message: 'Tài khoản không có quyền vận hành đơn hàng.',
@@ -165,7 +192,7 @@ class _StaffOrderQueueScreenState extends State<StaffOrderQueueScreen> {
           if (queue.orders.isEmpty) {
             return const _QueueState(
               icon: Icons.receipt_long_outlined,
-              message: 'Chưa có đơn hàng.',
+              message: 'Chưa có booking nhận tại nhà nào được phân công.',
             );
           }
 
@@ -180,6 +207,8 @@ class _StaffOrderQueueScreenState extends State<StaffOrderQueueScreen> {
                 order: queue.orders[index],
                 nextStatuses: _nextStatuses(queue.orders[index].status),
                 isUpdating: _isUpdating,
+                onInspect: () =>
+                    _openInspection(queue.orders[index].bookingId!),
                 onTransition: (status) =>
                     _transition(queue.orders[index], status),
               ),
@@ -188,6 +217,34 @@ class _StaffOrderQueueScreenState extends State<StaffOrderQueueScreen> {
         },
       ),
     );
+  }
+
+  String _queueErrorMessage(Object? error) {
+    if (error is TimeoutException) {
+      return error.message ?? 'Yêu cầu đã hết thời gian chờ.';
+    }
+    if (error is FormatException) {
+      return 'Phản hồi API danh sách đơn vẫn sai định dạng JSON. Cần kiểm tra dữ liệu trả về từ Laravel.';
+    }
+    if (error is DioException) {
+      final statusCode = error.response?.statusCode;
+      if (statusCode == 401) {
+        return 'Phiên nhân viên đã hết hạn. Đăng nhập lại để tải đơn hàng.';
+      }
+      if (error.type == DioExceptionType.connectionTimeout ||
+          error.type == DioExceptionType.receiveTimeout ||
+          error.type == DioExceptionType.sendTimeout) {
+        return 'Không kết nối được máy chủ Laravel. Kiểm tra máy chủ và địa chỉ API rồi thử lại.';
+      }
+      if (error.error is FormatException) {
+        return 'Máy chủ trả về dữ liệu đơn hàng không hợp lệ. Cần cập nhật backend Laravel rồi tải lại app.';
+      }
+      if (statusCode != null) {
+        return 'Máy chủ từ chối tải đơn (HTTP $statusCode). Thử đăng xuất rồi đăng nhập lại.';
+      }
+      return 'Không tải được hàng đợi đơn hàng (${error.type.name}). Kiểm tra kết nối rồi thử lại.';
+    }
+    return 'Không tải được hàng đợi đơn hàng. Thử lại hoặc đăng nhập lại.';
   }
 }
 
@@ -203,18 +260,20 @@ class _StaffOrderCard extends StatelessWidget {
     required this.order,
     required this.nextStatuses,
     required this.isUpdating,
+    required this.onInspect,
     required this.onTransition,
   });
 
   final LaundryOrderRecord order;
   final List<String> nextStatuses;
   final bool isUpdating;
+  final VoidCallback onInspect;
   final ValueChanged<String> onTransition;
 
   @override
   Widget build(BuildContext context) {
     final isBooking = order.orderId == null;
-    final actions = isBooking ? const ['Xác nhận yêu cầu'] : nextStatuses;
+    final actions = isBooking ? const ['Kiểm tra & tạo đơn'] : nextStatuses;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -236,6 +295,16 @@ class _StaffOrderCard extends StatelessWidget {
               Text(order.status, style: AppTypography.bodySmall),
             ],
           ),
+          const SizedBox(height: 4),
+          Text(
+            isBooking
+                ? 'Booking cần kiểm tra và nhận đồ'
+                : 'Đơn hàng đang xử lý',
+            style: AppTypography.bodySmall.copyWith(
+              color: isBooking ? AppColors.primary : AppColors.textMuted,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           const SizedBox(height: 8),
           Text(order.lineDescription, style: AppTypography.bodyText),
           if (order.logisticsSummary case final logistics?) ...[
@@ -249,7 +318,9 @@ class _StaffOrderCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            FormatterUtils.formatVnd(order.totalVnd),
+            isBooking && !order.hasLaundryDetails
+                ? 'Kiểm kê để báo giá'
+                : FormatterUtils.formatVnd(order.totalVnd),
             style: AppTypography.title.copyWith(color: AppColors.primary),
           ),
           if (actions.isNotEmpty) ...[
@@ -261,7 +332,7 @@ class _StaffOrderCard extends StatelessWidget {
                 return OutlinedButton(
                   onPressed: isUpdating
                       ? null
-                      : () => onTransition(isBooking ? 'DaXacNhan' : status),
+                      : (isBooking ? onInspect : () => onTransition(status)),
                   child: Text(status),
                 );
               }).toList(),

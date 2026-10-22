@@ -6,6 +6,7 @@ import 'package:app_quanly_giaiui/core/config/supabase_config.dart';
 import 'package:app_quanly_giaiui/core/navigation/app_router.dart';
 import 'package:app_quanly_giaiui/core/theme/app_theme.dart';
 import 'package:app_quanly_giaiui/features/notification/services/notification_service.dart';
+import 'package:app_quanly_giaiui/features/auth/data/staff_api_auth_repository.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -13,6 +14,7 @@ Future<void> main() async {
     await Firebase.initializeApp();
   }
   await SupabaseConfig.initialize();
+  await StaffApiAuthRepository.instance.initialize();
   runApp(const MainApp());
 }
 
