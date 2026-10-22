@@ -40,6 +40,8 @@ Get the local publishable key from `npx supabase status`. For an Android emulato
 
 For an Android emulator to load MB Bank transfer details from the local Laravel site, keep `php artisan serve` running on the host at port 8000. The debug launch uses `http://10.0.2.2:8000/api/v1/payment-config`. On a physical phone, pass `--dart-define=PAYMENT_CONFIG_URL=http://<computer-LAN-IP>:8000/api/v1/payment-config` and make the Laravel server reachable on the LAN. Restart the app after changing a `--dart-define` value.
 
+Staff sign in through the deployed Laravel API at `https://sky-laundry.vercel.app/api/v1/` using the same email and password as the web account. Laravel returns a revocable bearer token; the app stores it with secure storage and sends it to staff order and booking endpoints. For local development, override the API with `--dart-define=STAFF_API_BASE_URL=http://10.0.2.2:8000/api/v1/` on an Android emulator, `http://127.0.0.1:8000/api/v1/` on desktop, or the computer's LAN IP on a physical phone. The account and linked employee profile must both be active. Customer sign-in remains on Supabase.
+
 Customer sign-in and registration use Supabase phone OTP. Configure an SMS provider in the hosted project's Auth settings before expecting production SMS delivery. New customer profiles are created or linked only after Supabase confirms the phone number. Staff and manager identities must be provisioned and linked by a trusted administrator; self-service signup cannot grant staff roles.
 
 ## Checks

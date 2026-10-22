@@ -106,6 +106,19 @@ class _MessageInboxScreenState extends State<MessageInboxScreen> {
     await _loadFirstPage();
   }
 
+  Future<void> _openSupportChat() async {
+    try {
+      final thread = await _repository.getSupportThread();
+      if (mounted) context.pushNamed(AppRoutes.chat, extra: thread);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Không thể mở cửa hàng hỗ trợ.')),
+        );
+      }
+    }
+  }
+
   void _onScroll() {
     if (!_scrollController.hasClients || !_hasMore || _isLoadingMore) return;
     if (_scrollController.position.extentAfter < 300) {
@@ -160,7 +173,18 @@ class _MessageInboxScreenState extends State<MessageInboxScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text(_isStaff == true ? 'Tin nhắn khách hàng' : 'Tin nhắn')),
+    appBar: AppBar(
+      title: Text(_isStaff == true ? 'Tin nhắn khách hàng' : 'Tin nhắn'),
+      actions: _isStaff == true
+          ? null
+          : [
+              IconButton(
+                tooltip: 'Cửa hàng hỗ trợ',
+                onPressed: _openSupportChat,
+                icon: const Icon(Icons.support_agent_outlined),
+              ),
+            ],
+    ),
     body: _isLoading
         ? const Center(child: CircularProgressIndicator())
         : _loadError != null
@@ -204,7 +228,14 @@ class _MessageInboxScreenState extends State<MessageInboxScreen> {
                       : null,
                 ),
                 title: Row(children: [
-                  Expanded(child: Text(thread.title, style: const TextStyle(fontWeight: FontWeight.w600))),
+                  Expanded(child: Text(
+                    thread.orderNumber == null
+                        ? thread.title
+                        : 'Trao đổi về ${thread.orderNumber}',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  )),
                   if (thread.unreadCount > 0)
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
@@ -213,7 +244,7 @@ class _MessageInboxScreenState extends State<MessageInboxScreen> {
                     ),
                 ]),
                 subtitle: Text(
-                  '${thread.orderNumber == null ? '' : '${thread.orderNumber} · '}${thread.lastMessage}',
+                  thread.lastMessage,
                   maxLines: 1, overflow: TextOverflow.ellipsis,
                 ),
                 trailing: Text(_time(thread.lastMessageAt), style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),

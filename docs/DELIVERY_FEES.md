@@ -1,7 +1,7 @@
 # Phí lấy và giao đồ theo quãng đường
 
 Mỗi chặng tại nhà được tính riêng theo tuyến đường lái xe từ cửa hàng đến địa
-chỉ khách. Chặng lấy đồ và chặng giao đồ đều miễn phí 3 km đầu; mỗi km vượt
+chỉ khách. Chặng nhận đồ và chặng giao đồ đều miễn phí 3 km đầu; mỗi km vượt
 được tính 5.000đ, phần phí làm tròn lên bội số 1.000đ. Chặng tại cửa hàng có phí
 0đ.
 

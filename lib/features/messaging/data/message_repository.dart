@@ -119,10 +119,21 @@ class MessageRepository {
 
   Future<int> getSupportAccountId() async {
     final value = await _client.rpc('get_support_chat_recipient');
-    if (value is! num)
+    if (value is! num) {
       throw StateError('Cửa hàng chưa cấu hình tài khoản hỗ trợ.');
+    }
     return value.toInt();
   }
+
+  Future<ChatThread> getSupportThread() async => ChatThread(
+    peerAccountId: await getSupportAccountId(),
+    currentAccountId: await getCurrentAccountId(),
+    title: 'Cửa hàng hỗ trợ',
+    lastMessage: '',
+    lastMessageAt: null,
+    unreadCount: 0,
+    isStaff: false,
+  );
 
   Future<ChatThread> getThreadForMessage(int messageId) async {
     final accountId = await getCurrentAccountId();
@@ -144,7 +155,7 @@ class MessageRepository {
       peerAccountId: peerId,
       currentAccountId: accountId,
       title: message.orderId == null
-          ? 'Hỗ trợ cửa hàng'
+          ? 'Cửa hàng hỗ trợ'
           : 'Trao đổi về đơn hàng',
       lastMessage: message.content,
       lastMessageAt: message.sentAt,
@@ -179,17 +190,21 @@ class MessageRepository {
     final threads = rows
         .map((raw) {
           final row = raw as Map<String, dynamic>;
+          final orderId = (row['order_id'] as num?)?.toInt();
+          final threadIsStaff = row['is_staff'] as bool? ?? isStaff;
           return ChatThread(
             peerAccountId: (row['peer_account_id'] as num).toInt(),
             currentAccountId: (row['current_account_id'] as num).toInt(),
-            title: row['title'] as String? ?? 'Tin nhắn',
+            title: !threadIsStaff && orderId == null
+                ? 'Cửa hàng hỗ trợ'
+                : row['title'] as String? ?? 'Tin nhắn',
             lastMessage: row['last_message'] as String? ?? '',
             lastMessageAt: tryParseDatabaseTimestamp(
               row['last_message_at'] as String?,
             ),
             unreadCount: (row['unread_count'] as num? ?? 0).toInt(),
-            isStaff: row['is_staff'] as bool? ?? isStaff,
-            orderId: (row['order_id'] as num?)?.toInt(),
+            isStaff: threadIsStaff,
+            orderId: orderId,
             orderNumber: row['order_number'] is String
                 ? FormatterUtils.formatOrderCode(row['order_number'] as String)
                 : null,

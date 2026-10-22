@@ -6,7 +6,7 @@ class FormatterUtils {
   /// Normalize numeric order codes to the display format DH + 8 digits.
   /// Non-order codes (such as booking codes) are returned unchanged.
   static String formatOrderCode(String code) {
-    final match = RegExp(r'^DH(\d+)$', caseSensitive: false).firstMatch(code);
+    final match = RegExp(r'^(?:DH|#)?(\d+)$', caseSensitive: false).firstMatch(code);
     if (match == null) return code;
 
     return 'DH${match.group(1)!.padLeft(8, '0')}';

@@ -7,6 +7,7 @@ import 'package:app_quanly_giaiui/core/config/supabase_config.dart';
 import 'package:app_quanly_giaiui/features/splash/screens/splash_screen.dart';
 import 'package:app_quanly_giaiui/features/onboarding/screens/onboarding_screen.dart';
 import 'package:app_quanly_giaiui/features/auth/data/auth_repository.dart';
+import 'package:app_quanly_giaiui/features/auth/data/staff_api_auth_repository.dart';
 import 'package:app_quanly_giaiui/features/auth/screens/login_screen.dart';
 import 'package:app_quanly_giaiui/features/auth/screens/register_screen.dart';
 import 'package:app_quanly_giaiui/features/auth/screens/otp_verification_screen.dart';
@@ -24,6 +25,7 @@ import 'package:app_quanly_giaiui/features/payment/screens/payment_screen.dart';
 import 'package:app_quanly_giaiui/features/loyalty/screens/loyalty_screen.dart';
 import 'package:app_quanly_giaiui/features/loyalty/screens/vouchers_screen.dart';
 import 'package:app_quanly_giaiui/features/staff/screens/staff_order_queue_screen.dart';
+import 'package:app_quanly_giaiui/features/staff/screens/staff_booking_inspection_screen.dart';
 import 'package:app_quanly_giaiui/features/profile/screens/address_book_screen.dart';
 import 'package:app_quanly_giaiui/features/profile/screens/edit_profile_screen.dart';
 import 'package:app_quanly_giaiui/features/profile/screens/change_password_screen.dart';
@@ -53,6 +55,9 @@ class AppRouter {
       );
 
   static Future<List<String>> _loadCurrentRoles() async {
+    if (StaffApiAuthRepository.instance.isSignedIn) {
+      return StaffApiAuthRepository.instance.roles;
+    }
     final cachedRoles = _cachedRoles;
     if (cachedRoles != null) return cachedRoles;
 
@@ -75,12 +80,16 @@ class AppRouter {
         name: AppRoutes.splash,
         builder: (context, state) => SplashScreen(
           resolveRoute: () async {
+            if (StaffApiAuthRepository.instance.isSignedIn) {
+              return AppRoutes.staffQueuePath;
+            }
             final repository = AuthRepository();
             await repository.ensureGoogleCustomerProfile();
             _cachedRoles = null;
             final roles = await _loadCurrentRoles();
             if (_isStaffAccount(roles)) {
-              return AppRoutes.staffQueuePath;
+              await repository.signOut();
+              return AppRoutes.loginPath;
             }
             return defaultRouteForRoles(roles);
           },
@@ -294,6 +303,13 @@ class AppRouter {
         builder: (context, state) => const StaffOrderQueueScreen(),
       ),
       GoRoute(
+        path: AppRoutes.staffBookingInspectionPath,
+        name: AppRoutes.staffBookingInspection,
+        builder: (context, state) => StaffBookingInspectionScreen(
+          bookingId: int.parse(state.pathParameters['id']!),
+        ),
+      ),
+      GoRoute(
         path: AppRoutes.addressBookPath,
         name: AppRoutes.addressBook,
         builder: (context, state) => const AddressBookScreen(),
@@ -325,6 +341,15 @@ class AppRouter {
     final isInitialPasswordSetupRoute =
         path == AppRoutes.initialPasswordSetupPath;
     final isPublicRoute = isAuthRoute || isOtpRoute || isPasswordResetRoute;
+
+    final staffSignedIn = StaffApiAuthRepository.instance.isSignedIn;
+    if (staffSignedIn) {
+      if (path == AppRoutes.staffQueuePath ||
+          path.startsWith('/staff/bookings/')) {
+        return null;
+      }
+      return AppRoutes.staffQueuePath;
+    }
 
     if (!SupabaseConfig.isConfigured) {
       return isPublicRoute ? null : AppRoutes.loginPath;
@@ -360,6 +385,10 @@ class AppRouter {
     if (isSignedIn && path != AppRoutes.splashPath) {
       final roles = await _loadCurrentRoles();
       if (_isStaffAccount(roles)) {
+        if (!StaffApiAuthRepository.instance.isSignedIn) {
+          await authRepository.signOut();
+          return AppRoutes.loginPath;
+        }
         if (path == AppRoutes.staffQueuePath ||
             path == AppRoutes.messagesPath ||
             path.startsWith('${AppRoutes.messagesPath}/')) {
@@ -391,8 +420,14 @@ class AppRouter {
 
 class _AuthRefreshListenable extends ChangeNotifier {
   StreamSubscription<AuthState>? _subscription;
+  late final VoidCallback _staffAuthListener;
 
   _AuthRefreshListenable() {
+    _staffAuthListener = () {
+      AppRouter._cachedRoles = null;
+      notifyListeners();
+    };
+    StaffApiAuthRepository.authRevision.addListener(_staffAuthListener);
     if (SupabaseConfig.isConfigured) {
       _subscription = Supabase.instance.client.auth.onAuthStateChange.listen((
         authState,
@@ -413,6 +448,7 @@ class _AuthRefreshListenable extends ChangeNotifier {
   @override
   void dispose() {
     _subscription?.cancel();
+    StaffApiAuthRepository.authRevision.removeListener(_staffAuthListener);
     super.dispose();
   }
 }

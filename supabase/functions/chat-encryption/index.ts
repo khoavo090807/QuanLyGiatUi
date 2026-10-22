@@ -455,7 +455,7 @@ Deno.serve(async (request: Request) => {
         const content = typeof latest?.NoiDung === "string" ? latest.NoiDung : "";
         return {
           peer_account_id: supportId, current_account_id: accountId,
-          title: group.order_id == null ? "Hỗ trợ cửa hàng" : "Trao đổi về đơn hàng",
+          title: group.order_id == null ? "Cửa hàng hỗ trợ" : "Trao đổi về đơn hàng",
           last_message: latest ? (content.startsWith("image:") ? "📷 Ảnh" : content) : "Nhắn tin với cửa hàng",
           last_message_at: group.last?.ThoiGianGui ?? null,
           unread_count: group.unread_count, is_staff: false, order_id: group.order_id,

@@ -479,10 +479,17 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
             label: 'Tạm tính dịch vụ',
             value: _formatVnd(_cartTotalMinorUnits / 100),
           ),
+          if (_hasHomeDeliveryLeg && _deliveryQuote != null) ...[
+            const SizedBox(height: 8),
+            _PriceBreakdownLine(
+              label: 'Phí giao nhận dự kiến',
+              value: _formatVnd(deliveryFee),
+            ),
+          ],
           if (voucher != null) ...[
             const SizedBox(height: 8),
             _PriceBreakdownLine(
-              label: 'Mã ${voucher.code}',
+              label: 'Mã giảm giá ${voucher.code}',
               value: '−${_formatVnd(_promotionDiscount(voucher))}',
               valueColor: AppColors.success,
             ),
@@ -493,13 +500,6 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
               label: 'Điểm tích lũy ($pointsToUse điểm)',
               value: '−${_formatVnd(pointsDiscount / 100)}',
               valueColor: AppColors.success,
-            ),
-          ],
-          if (_hasHomeDeliveryLeg && _deliveryQuote != null) ...[
-            const SizedBox(height: 8),
-            _PriceBreakdownLine(
-              label: 'Phí giao nhận dự kiến',
-              value: _formatVnd(deliveryFee),
             ),
           ],
           const Divider(height: 24),
@@ -892,8 +892,8 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
             if (_pickupMethod == 'Tại nhà')
               _deliveryFeeLegRow(
                 label: quote == null
-                    ? 'Chặng lấy đồ'
-                    : 'Lấy đồ · ${_formatDistance(quote.pickupDistanceMeters)}',
+                    ? 'Chặng nhận đồ'
+                    : 'Nhận đồ · ${_formatDistance(quote.pickupDistanceMeters)}',
                 feeVnd: quote?.pickupFeeVnd,
               ),
             if (_deliveryMethod == 'Tại nhà')
@@ -1184,7 +1184,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       return;
     }
     if (_pickupMethod == 'Tại nhà' && _pickupAddress == null) {
-      _showMessage('Nhập, chọn hoặc dùng vị trí hiện tại cho địa chỉ lấy đồ.');
+      _showMessage('Nhập, chọn hoặc dùng vị trí hiện tại cho địa chỉ nhận đồ.');
       return;
     }
     if (_pickupMethod == 'Tại nhà' &&
@@ -1421,7 +1421,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                     ButtonSegment(
                       value: 'Tại nhà',
                       icon: Icon(Icons.local_shipping_outlined),
-                      label: Text('Lấy tận nơi'),
+                      label: Text('Nhận tận nơi'),
                     ),
                   ],
                   selected: {_pickupMethod},
@@ -1435,7 +1435,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                 if (_pickupMethod == 'Tại nhà') ...[
                   const SizedBox(height: 16),
                   _AddressInput(
-                    label: 'Địa chỉ lấy đồ',
+                    label: 'Địa chỉ nhận đồ',
                     currentLocation: _currentPickupLocation,
                     controller: _pickupAddressOverride,
                     suggestionService: _addressSuggestionService,
@@ -1653,7 +1653,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                 FilledButton.icon(
                   onPressed: () => _continueToSummary(vouchers),
                   icon: const Icon(Icons.receipt_long_outlined),
-                  label: const Text('Xem xác nhận đơn'),
+                  label: const Text('Xem xác nhận đặt lịch'),
                 ),
               ],
             ),

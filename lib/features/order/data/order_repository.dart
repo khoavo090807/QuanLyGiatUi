@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:app_quanly_giaiui/core/utils/formatter_utils.dart';
 import 'package:app_quanly_giaiui/features/order/domain/cart_item.dart';
 import 'package:app_quanly_giaiui/features/order/data/delivery_fee_quote.dart';
+import 'package:app_quanly_giaiui/features/staff/data/staff_booking_repository.dart';
 
 enum LaundryBookingStatus {
   awaitingReception('ChoTiepNhan', 'Chờ tiếp nhận'),
@@ -189,7 +190,10 @@ num? _asNum(dynamic value) {
 
 /// Bookings do not have an order yet, so the final amount must be derived
 /// from the persisted booking details and its selected promotion.
-num _bookingPromotionDiscount(num subtotalVnd, Map<String, dynamic>? promotion) {
+num _bookingPromotionDiscount(
+  num subtotalVnd,
+  Map<String, dynamic>? promotion,
+) {
   if (promotion == null || subtotalVnd <= 0) return 0;
 
   final minimum = _asNum(promotion['GiaTriDonToiThieu']) ?? 0;
@@ -235,21 +239,24 @@ String? _deliveryAddressOf(Map<String, dynamic>? source) =>
 
 List<LaundryOrderItem> _parseOrderItems(List<dynamic>? details) {
   if (details == null || details.isEmpty) return const [];
-  return details.map((entry) {
-    final detail = entry as Map<String, dynamic>;
-    final service = detail['DichVu'] as Map<String, dynamic>?;
-    final itemType = detail['LoaiDoGiat'] as Map<String, dynamic>?;
-    final unit = detail['DonViTinh'] as Map<String, dynamic>?;
-    final measurement = _asNum(detail['KhoiLuong'] ?? detail['SoLuong']) ?? 0;
-    return LaundryOrderItem(
-      serviceName: _asString(service?['TenDichVu']) ?? 'Dịch vụ',
-      itemTypeName: _asString(itemType?['TenLoaiDoGiat']) ?? 'Đồ giặt',
-      unitSymbol: _asString(unit?['KyHieu']) ?? '',
-      measurement: measurement,
-      unitPriceVnd: _asNum(detail['DonGia']) ?? 0,
-      totalVnd: _asNum(detail['ThanhTien']) ?? 0,
-    );
-  }).toList(growable: false);
+  return details
+      .map((entry) {
+        final detail = entry as Map<String, dynamic>;
+        final service = detail['DichVu'] as Map<String, dynamic>?;
+        final itemType = detail['LoaiDoGiat'] as Map<String, dynamic>?;
+        final unit = detail['DonViTinh'] as Map<String, dynamic>?;
+        final measurement =
+            _asNum(detail['KhoiLuong'] ?? detail['SoLuong']) ?? 0;
+        return LaundryOrderItem(
+          serviceName: _asString(service?['TenDichVu']) ?? 'Dịch vụ',
+          itemTypeName: _asString(itemType?['TenLoaiDoGiat']) ?? 'Đồ giặt',
+          unitSymbol: _asString(unit?['KyHieu']) ?? '',
+          measurement: measurement,
+          unitPriceVnd: _asNum(detail['DonGia']) ?? 0,
+          totalVnd: _asNum(detail['ThanhTien']) ?? 0,
+        );
+      })
+      .toList(growable: false);
 }
 
 class LaundryOrderRecord {
@@ -282,6 +289,9 @@ class LaundryOrderRecord {
     this.pickupDeliveryFeeVnd = 0,
     this.deliveryDistanceMeters = 0,
     this.deliveryLegFeeVnd = 0,
+    this.customerName,
+    this.customerPhone,
+    this.canConfirmDelivery = false,
   });
 
   final int? orderId;
@@ -312,6 +322,9 @@ class LaundryOrderRecord {
   final num pickupDeliveryFeeVnd;
   final int deliveryDistanceMeters;
   final num deliveryLegFeeVnd;
+  final String? customerName;
+  final String? customerPhone;
+  final bool canConfirmDelivery;
 
   String? get logisticsSummary {
     final methods = <String>[];
@@ -341,6 +354,9 @@ class LaundryOrderRecord {
       orderId: _asInt(json['DonHangID']),
       bookingId: _asInt(json['BookingID'] ?? booking?['BookingID']),
       bookingNumber: _asString(booking?['MaBooking']),
+      customerName: _asString((json['KhachHang'] as Map?)?['HoTen']),
+      customerPhone: _asString((json['KhachHang'] as Map?)?['SoDienThoai']),
+      canConfirmDelivery: json['CanConfirmDelivery'] == true,
       pickupMethod: _asString(booking?['HinhThucNhanDo']),
       deliveryMethod: _deliveryMethodOf(booking),
       pickupAddress: _asString(booking?['DiaChiNhan']),
@@ -364,11 +380,9 @@ class LaundryOrderRecord {
           ? 'Cửa hàng đang kiểm nhận đồ'
           : descriptions.join(', '),
       hasLaundryDetails: items.isNotEmpty,
-      pickupDistanceMeters:
-          _asInt(booking?['PickupDistanceMeters']) ?? 0,
+      pickupDistanceMeters: _asInt(booking?['PickupDistanceMeters']) ?? 0,
       pickupDeliveryFeeVnd: _asNum(booking?['PickupDeliveryFee']) ?? 0,
-      deliveryDistanceMeters:
-          _asInt(booking?['DeliveryDistanceMeters']) ?? 0,
+      deliveryDistanceMeters: _asInt(booking?['DeliveryDistanceMeters']) ?? 0,
       deliveryLegFeeVnd: _asNum(booking?['DeliveryFee']) ?? 0,
     );
   }
@@ -401,9 +415,11 @@ class LaundryOrderRecord {
         _asNum(linkedOrder?['TienGiamDoDiem'] ?? json['TienGiamDoDiem']) ?? 0;
     final pickupFee = _asNum(json['PickupDeliveryFee']) ?? 0;
     final deliveryFee = _asNum(json['DeliveryFee']) ?? 0;
-    final promotionDiscountVnd = _asNum(linkedOrder?['TienGiamKhuyenMai']) ??
+    final promotionDiscountVnd =
+        _asNum(linkedOrder?['TienGiamKhuyenMai']) ??
         _bookingPromotionDiscount(subtotalVnd, promotion);
-    final finalTotalVnd = _asNum(linkedOrder?['ThanhTien']) ??
+    final finalTotalVnd =
+        _asNum(linkedOrder?['ThanhTien']) ??
         (subtotalVnd +
                 pickupFee +
                 deliveryFee -
@@ -426,8 +442,7 @@ class LaundryOrderRecord {
       subtotalVnd:
           _asNum(linkedOrder?['TongTien']) ??
           (items.isEmpty ? null : subtotalVnd),
-      pointsUsed:
-          _asInt(linkedOrder?['DiemSuDung'] ?? json['DiemSuDung']) ?? 0,
+      pointsUsed: _asInt(linkedOrder?['DiemSuDung'] ?? json['DiemSuDung']) ?? 0,
       pointsDiscountVnd: pointsDiscountVnd,
       promotionDiscountVnd: promotionDiscountVnd,
       promotionCode: _asString(promotion?['MaKhuyenMai']),
@@ -547,9 +562,11 @@ class LaundryOrderItem {
 
 class OrderRepository {
   OrderRepository({SupabaseClient? client})
-    : _client = client ?? Supabase.instance.client;
+    : _client = client ?? Supabase.instance.client,
+      _staffBookingRepository = StaffBookingRepository();
 
   final SupabaseClient _client;
+  final StaffBookingRepository _staffBookingRepository;
 
   static String createIdempotencyKey() {
     final random = Random.secure();
@@ -613,8 +630,7 @@ class OrderRepository {
     final serviceTypeRows = await serviceTypesFuture as List<dynamic>;
     final serviceTypeNames = <int, String>{
       for (final row in serviceTypeRows.cast<Map<String, dynamic>>())
-        (row['loaidichvuid'] as num).toInt():
-            row['tenloaidichvu'] as String,
+        (row['loaidichvuid'] as num).toInt(): row['tenloaidichvu'] as String,
     };
 
     return LaundryCatalogData(
@@ -634,7 +650,9 @@ class OrderRepository {
     );
   }
 
-  Future<List<LaundryOrderRecord>> getCustomerOrders({bool includeDetails = false}) async {
+  Future<List<LaundryOrderRecord>> getCustomerOrders({
+    bool includeDetails = false,
+  }) async {
     final user = _client.auth.currentUser;
     if (user == null) {
       return const [];
@@ -643,17 +661,17 @@ class OrderRepository {
     try {
       final detailsSelect = includeDetails
           ? ',ChiTietDonHang('
-              'SoLuong,KhoiLuong,DonGia,ThanhTien,'
-              'DichVu(TenDichVu),LoaiDoGiat(TenLoaiDoGiat),DonViTinh(KyHieu)'
-              ')'
+                'SoLuong,KhoiLuong,DonGia,ThanhTien,'
+                'DichVu(TenDichVu),LoaiDoGiat(TenLoaiDoGiat),DonViTinh(KyHieu)'
+                ')'
           : '';
       final bookingSelect = includeDetails
           ? 'Booking('
-              'BookingID,MaBooking,HinhThucNhanDo,HinhThucGiaoDo,DiaChiNhan,DiaChiGiao,'
-              'PickupDistanceMeters,PickupDeliveryFee,DeliveryDistanceMeters,DeliveryFee,'
-              'NgayHen,GioHen,GhiChu,PhuongThucThanhToan,'
-              'DiemSuDung,TienGiamDoDiem,KhuyenMai(MaKhuyenMai,LoaiKhuyenMai,GiaTriGiam,GiaTriDonToiThieu,MucGiamToiDa)'
-              ')'
+                'BookingID,MaBooking,HinhThucNhanDo,HinhThucGiaoDo,DiaChiNhan,DiaChiGiao,'
+                'PickupDistanceMeters,PickupDeliveryFee,DeliveryDistanceMeters,DeliveryFee,'
+                'NgayHen,GioHen,GhiChu,PhuongThucThanhToan,'
+                'DiemSuDung,TienGiamDoDiem,KhuyenMai(MaKhuyenMai,LoaiKhuyenMai,GiaTriGiam,GiaTriDonToiThieu,MucGiamToiDa)'
+                ')'
           : 'Booking(BookingID,MaBooking)';
       final rows = await _client
           .from('DonHang')
@@ -677,8 +695,10 @@ class OrderRepository {
     }
   }
 
-  Future<List<LaundryOrderRecord>> getStaffOrders() =>
-      getCustomerOrders(includeDetails: true);
+  Future<List<LaundryOrderRecord>> getStaffOrders() async {
+    final rows = await _staffBookingRepository.getStaffOrders();
+    return rows.map(LaundryOrderRecord.fromJson).toList(growable: false);
+  }
 
   Future<List<LaundryOrderRecord>> getCustomerHistory() async {
     final user = _client.auth.currentUser;
@@ -732,11 +752,7 @@ class OrderRepository {
 
     final response = await _client.rpc(
       'get_customer_history_page',
-      params: {
-        'p_status': statusGroup,
-        'p_offset': offset,
-        'p_limit': limit,
-      },
+      params: {'p_status': statusGroup, 'p_offset': offset, 'p_limit': limit},
     );
     final result = Map<String, dynamic>.from(response as Map);
     final descriptors = (result['items'] as List<dynamic>? ?? const [])
@@ -758,16 +774,16 @@ class OrderRepository {
           ? Future.value(const <LaundryOrderRecord>[])
           : _getBookings(includeDetails: true, onlyBookingIds: bookingIds),
     ]);
-    final ordersById = {
-      for (final order in records[0]) order.orderId!: order,
-    };
+    final ordersById = {for (final order in records[0]) order.orderId!: order};
     final bookingsById = {
       for (final booking in records[1]) booking.bookingId!: booking,
     };
     final orderedRecords = descriptors
-        .map((item) => item['source'] == 'order'
-            ? ordersById[(item['record_id'] as num).toInt()]
-            : bookingsById[(item['record_id'] as num).toInt()])
+        .map(
+          (item) => item['source'] == 'order'
+              ? ordersById[(item['record_id'] as num).toInt()]
+              : bookingsById[(item['record_id'] as num).toInt()],
+        )
         .whereType<LaundryOrderRecord>()
         .toList(growable: false);
 
@@ -802,15 +818,60 @@ class OrderRepository {
   }
 
   Future<List<LaundryOrderRecord>> getStaffQueue() async {
-    final results = await Future.wait([
-      getStaffOrders(),
-      _getBookings(includeDetails: true),
-    ]);
-    final pendingBookings = results[1].where(
-      (booking) => booking.canCancelBooking,
-    );
-    return [...results[0], ...pendingBookings]
-      ..sort((left, right) => right.createdAt.compareTo(left.createdAt));
+    final orders = await getStaffOrders();
+    final assignedBookings = await _staffBookingRepository
+        .getAssignedBookings();
+    final bookingRecords = assignedBookings.map(_staffBookingRecord);
+    // Inspection tasks are the employee's primary work: keep them ahead of
+    // already-created orders so a long order list cannot hide pickups.
+    return [...bookingRecords, ...orders]..sort((left, right) {
+      final leftIsBooking = left.orderId == null;
+      final rightIsBooking = right.orderId == null;
+      if (leftIsBooking != rightIsBooking) return leftIsBooking ? -1 : 1;
+      return right.createdAt.compareTo(left.createdAt);
+    });
+  }
+
+  LaundryOrderRecord _staffBookingRecord(Map<String, dynamic> booking) {
+    final items = (booking['items'] as List<dynamic>? ?? const [])
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .map(
+          (item) => {
+            'SoLuong': item['quantity'],
+            'KhoiLuong': item['weight'],
+            'DonGia': item['unit_price'],
+            'ThanhTien': item['subtotal'],
+            'GhiChu': item['note'],
+            'DichVu': {'TenDichVu': item['service_name']},
+            'LoaiDoGiat': {'TenLoaiDoGiat': item['garment_name']},
+            'DonViTinh': {'KyHieu': item['unit_name']},
+          },
+        )
+        .toList(growable: false);
+
+    final appointmentDate = booking['appointment_date']?.toString();
+    final appointmentTime = booking['appointment_time']?.toString();
+    final createdAt =
+        booking['created_at']?.toString() ??
+        '${appointmentDate ?? DateTime.now().toIso8601String().substring(0, 10)}T00:00:00';
+
+    return LaundryOrderRecord.fromBookingJson({
+      'BookingID': booking['id'],
+      'MaBooking': booking['code'],
+      'TrangThai': booking['status'],
+      'NgayTao': createdAt,
+      'HinhThucNhanDo': booking['receive_method'],
+      'HinhThucGiaoDo': booking['return_method'],
+      'DiaChiNhan': booking['receive_address'],
+      'DiaChiGiao': booking['return_address'],
+      'NgayHen': appointmentDate,
+      'GioHen': appointmentTime,
+      'GhiChu': booking['note'],
+      'PickupDeliveryFee': booking['pickup_fee'],
+      'DeliveryFee': booking['return_fee'],
+      'ChiTietBooking': items,
+    });
   }
 
   Future<List<LaundryOrderRecord>> _getBookings({
@@ -825,14 +886,12 @@ class OrderRepository {
     try {
       final bookingSelect = includeDetails
           ? 'BookingID,MaBooking,TrangThai,NgayTao,'
-              'HinhThucNhanDo,HinhThucGiaoDo,DiaChiNhan,DiaChiGiao,'
-              'PickupDistanceMeters,PickupDeliveryFee,DeliveryDistanceMeters,DeliveryFee,'
-              'NgayHen,GioHen,GhiChu,PhuongThucThanhToan,'
-              'DiemSuDung,TienGiamDoDiem,KhuyenMai(MaKhuyenMai,LoaiKhuyenMai,GiaTriGiam,GiaTriDonToiThieu,MucGiamToiDa)'
+                'HinhThucNhanDo,HinhThucGiaoDo,DiaChiNhan,DiaChiGiao,'
+                'PickupDistanceMeters,PickupDeliveryFee,DeliveryDistanceMeters,DeliveryFee,'
+                'NgayHen,GioHen,GhiChu,PhuongThucThanhToan,'
+                'DiemSuDung,TienGiamDoDiem,KhuyenMai(MaKhuyenMai,LoaiKhuyenMai,GiaTriGiam,GiaTriDonToiThieu,MucGiamToiDa)'
           : 'BookingID,MaBooking,TrangThai,NgayTao';
-      var bookingQuery = _client
-          .from('Booking')
-          .select(bookingSelect);
+      var bookingQuery = _client.from('Booking').select(bookingSelect);
       if (onlyBookingIds != null) {
         if (onlyBookingIds.isEmpty) return const [];
         bookingQuery = bookingQuery.inFilter('BookingID', onlyBookingIds);
@@ -860,7 +919,6 @@ class OrderRepository {
           if (bookingId == null) continue;
           chiTietMap.putIfAbsent(bookingId, () => []).add(detail);
         }
-
       }
 
       return (bookings as List<dynamic>)
@@ -887,22 +945,10 @@ class OrderRepository {
     required String newStatus,
     String? reason,
   }) async {
-    await _client.rpc(
-      'transition_laundry_order',
-      params: {
-        'p_donhangid': orderId,
-        'p_trangthaimoi': newStatus,
-        'p_lydo': reason,
-      },
-    );
-  }
-
-  Future<void> confirmBooking(int bookingId, {required bool hasDetails}) async {
-    await _client.rpc(
-      hasDetails
-          ? 'confirm_laundry_booking'
-          : 'confirm_laundry_booking_without_details',
-      params: {'p_bookingid': bookingId},
+    await _staffBookingRepository.updateOrderStatus(
+      orderId: orderId,
+      status: newStatus,
+      reason: reason,
     );
   }
 
@@ -1005,10 +1051,7 @@ class OrderRepository {
         .toList(growable: false);
 
     return LaundryOrderDetails(
-      order: LaundryOrderRecord.fromJson({
-        ...order,
-        if (booking != null) 'Booking': booking,
-      }),
+      order: LaundryOrderRecord.fromJson({...order, 'Booking': ?booking}),
       events: eventsList
           .map(
             (event) =>
@@ -1074,12 +1117,14 @@ class OrderRepository {
     // Booking remains the current quote until an order is created.  Therefore
     // recalculate from its saved lines on every refresh, so an adjustment
     // saved by staff on the web is immediately reflected to the customer.
-    final bookingSubtotalVnd = (linkedOrder?['TongTien'] as num?) ??
+    final bookingSubtotalVnd =
+        (linkedOrder?['TongTien'] as num?) ??
         (booking['ChiTietBooking'] as List<dynamic>? ?? const <dynamic>[])
             .fold<num>(
               0,
               (total, item) =>
-                  total + ((item as Map<String, dynamic>)['ThanhTien'] as num? ?? 0),
+                  total +
+                  ((item as Map<String, dynamic>)['ThanhTien'] as num? ?? 0),
             );
     final promotion =
         (linkedOrder?['KhuyenMai'] as Map<String, dynamic>?) ??
@@ -1094,7 +1139,8 @@ class OrderRepository {
     final bookingDeliveryFeeVnd =
         (_asNum(booking['PickupDeliveryFee']) ?? 0) +
         (_asNum(booking['DeliveryFee']) ?? 0);
-    final bookingFinalTotalVnd = (linkedOrder?['ThanhTien'] as num?) ??
+    final bookingFinalTotalVnd =
+        (linkedOrder?['ThanhTien'] as num?) ??
         (bookingSubtotalVnd +
                 bookingDeliveryFeeVnd -
                 bookingPointsDiscountVnd -
@@ -1161,14 +1207,17 @@ class OrderRepository {
       deliveryMethod: _deliveryMethodOf(booking),
       paymentMethod:
           _asString(booking['PhuongThucThanhToan']) ??
-          (linkedOrderId == null ? null : await _getPaymentMethod(linkedOrderId)),
+          (linkedOrderId == null
+              ? null
+              : await _getPaymentMethod(linkedOrderId)),
       address: booking['DiaChiNhan'] as String?,
       deliveryAddress: _deliveryAddressOf(booking),
       appointment: appointment,
       notes: booking['GhiChu'] as String?,
       items: items.isNotEmpty ? items : null,
       subtotalVnd: bookingSubtotalVnd,
-      deliveryFeeVnd: linkedOrder?['PhiGiaoHang'] as num? ?? bookingDeliveryFeeVnd,
+      deliveryFeeVnd:
+          linkedOrder?['PhiGiaoHang'] as num? ?? bookingDeliveryFeeVnd,
       pointsUsed:
           (linkedOrder?['DiemSuDung'] as num?)?.toInt() ??
           (booking['DiemSuDung'] as num?)?.toInt() ??

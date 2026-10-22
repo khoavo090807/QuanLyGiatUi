@@ -233,13 +233,13 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                 value: _deliveryMethod,
               ),
               if (_address != null)
-                _SummaryRow(label: 'Địa chỉ lấy đồ', value: _address!),
+                _SummaryRow(label: 'Địa chỉ nhận đồ', value: _address!),
               if (_deliveryAddress != null)
                 _SummaryRow(label: 'Địa chỉ giao đồ', value: _deliveryAddress!),
               if (_pickupMethod == 'Tại nhà')
                 _SummaryRow(
                   label:
-                      'Phí lấy đồ · ${_distanceLabel(_pickupDistanceMeters)}',
+                      'Phí nhận đồ · ${_distanceLabel(_pickupDistanceMeters)}',
                   value: _formatVnd(_pickupDeliveryFeeVnd),
                 ),
               if (_deliveryMethod == 'Tại nhà')
@@ -292,7 +292,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                   value: 'Tính sau khi cửa hàng báo giá',
                 ),
                 _SummaryRow(
-                  label: 'Tổng tiền cuối cùng khách trả',
+                  label: 'Tổng tiền thanh toán',
                   value: 'Cửa hàng sẽ báo giá',
                   emphasize: true,
                 ),
@@ -318,7 +318,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                   value: _formatVnd(_totalDiscountEstimateVnd),
                 ),
                 _SummaryRow(
-                  label: 'Tổng tiền cuối cùng khách trả',
+                  label: 'Tổng tiền thanh toán',
                   value: _formatVnd(_estimatedFinalTotalVnd),
                   emphasize: true,
                 ),
@@ -356,11 +356,11 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                             dimension: 20,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Text('Gửi yêu cầu đặt đơn'),
+                        : const Text('Gửi yêu cầu đặt lịch'),
                   )
                 : FilledButton(
                     onPressed: () => MainShell.goToTab(context, 1),
-                    child: const Text('Đến lịch sử đơn hàng'),
+                    child: const Text('Xem lịch sử'),
                   ),
           ),
         ),

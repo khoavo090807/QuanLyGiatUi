@@ -219,7 +219,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
                       if (details.address != null &&
                           details.address!.isNotEmpty)
                         _SummaryRow(
-                          label: 'Địa chỉ lấy đồ',
+                          label: 'Địa chỉ nhận đồ',
                           value: details.address!,
                         ),
                       if (details.deliveryAddress != null &&
@@ -269,7 +269,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
                       ),
                     if (order.pickupMethod == 'Tại nhà')
                       _SummaryRow(
-                        label: 'Phí lấy đồ · ${_formatDistance(order.pickupDistanceMeters)}',
+                        label: 'Phí nhận đồ · ${_formatDistance(order.pickupDistanceMeters)}',
                         value: _formatVnd(order.pickupDeliveryFeeVnd),
                       ),
                     if (order.deliveryMethod == 'Tại nhà')
@@ -303,7 +303,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
                             '-${_formatVnd(details.pointsDiscountVnd + (details.promotionDiscountVnd ?? 0))}',
                       ),
                     _SummaryRow(
-                      label: 'Tổng tiền cuối cùng khách trả',
+                      label: 'Tổng tiền thanh toán',
                       value: _formatVnd(details.finalTotalVnd ?? 0),
                       emphasize: true,
                     ),

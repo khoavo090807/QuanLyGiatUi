@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:dio/dio.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:app_quanly_giaiui/core/constants/app_strings.dart';
 import 'package:app_quanly_giaiui/core/navigation/app_routes.dart';
 import 'package:app_quanly_giaiui/core/theme/app_colors.dart';
 import 'package:app_quanly_giaiui/core/theme/app_typography.dart';
 import 'package:app_quanly_giaiui/features/auth/data/auth_repository.dart';
+import 'package:app_quanly_giaiui/features/auth/data/staff_api_auth_repository.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -34,8 +36,8 @@ class _LoginScreenState extends State<LoginScreen> {
         _passwordController.text.isEmpty) {
       setState(
         () => _loginError = _isStaffLogin
-            ? 'Nhập gmail và mật khẩu do quản trị viên cấp.'
-            : 'Vui lòng nhập gmail và mật khẩu.',
+            ? 'Nhập email và mật khẩu do quản trị viên cấp.'
+            : 'Vui lòng nhập email và mật khẩu.',
       );
       return;
     }
@@ -45,6 +47,17 @@ class _LoginScreenState extends State<LoginScreen> {
       _loginError = null;
     });
     try {
+      if (_isStaffLogin) {
+        await StaffApiAuthRepository.instance.login(
+          email: _emailController.text,
+          password: _passwordController.text,
+        );
+        if (Supabase.instance.client.auth.currentSession != null) {
+          await Supabase.instance.client.auth.signOut();
+        }
+        if (mounted) context.goNamed(AppRoutes.staffQueue);
+        return;
+      }
       final repository = AuthRepository();
       await repository.signInWithPassword(
         email: _emailController.text,
@@ -55,11 +68,9 @@ class _LoginScreenState extends State<LoginScreen> {
       final isStaff = roles.any(
         {'Nhân viên', 'Quản lý', 'Chủ cửa hàng'}.contains,
       );
-      if (_isStaffLogin && !isStaff) {
+      if (isStaff) {
         await repository.signOut();
-        throw const AuthException(
-          'Tài khoản chưa được cấp vai trò nhân viên hoặc quản lý.',
-        );
+        throw const AuthException('Vui lòng chọn đăng nhập Nhân viên.');
       }
     } catch (error) {
       if (mounted) {
@@ -76,6 +87,15 @@ class _LoginScreenState extends State<LoginScreen> {
         return 'Tài khoản hoặc mật khẩu không đúng.';
       }
       return error.message;
+    }
+    if (error is DioException) {
+      final data = error.response?.data;
+      if (data is Map && data['message'] is String) {
+        return data['message'] as String;
+      }
+      return error.type == DioExceptionType.connectionError
+          ? 'Không kết nối được máy chủ. Kiểm tra địa chỉ API và mạng.'
+          : 'Không thể đăng nhập. Vui lòng thử lại.';
     }
     return 'Không thể đăng nhập. Vui lòng thử lại.';
   }
@@ -117,7 +137,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 Text(
                   _isStaffLogin
                       ? 'Dành cho nhân viên, quản lý và chủ cửa hàng.'
-                      : 'Đăng nhập bằng gmail và mật khẩu hoặc tài khoản Google.',
+                      : 'Đăng nhập bằng email và mật khẩu hoặc tài khoản Google.',
                   style: AppTypography.bodyText.copyWith(color: AppColors.textSecondary),
                   textAlign: TextAlign.center,
                 ),
@@ -153,7 +173,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     }
                   },
                   decoration: const InputDecoration(
-                    labelText: 'Gmail tài khoản',
+                    labelText: 'Email tài khoản',
                     prefixIcon: Icon(Icons.email_outlined),
                   ),
                 ),
