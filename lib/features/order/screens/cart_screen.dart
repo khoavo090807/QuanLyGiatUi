@@ -69,7 +69,7 @@ class _CartScreenState extends State<CartScreen> {
     final cart = CartStore.instance;
     final item = cart.items[index];
     final next = item.measurement + delta;
-    cart.setMeasurement(index, next < 1 ? 1 : next);
+    cart.setMeasurement(index, next < 0 ? 0 : next);
   }
 
   Future<void> _editMeasurement(int index) async {
@@ -88,7 +88,7 @@ class _CartScreenState extends State<CartScreen> {
     final measurement = num.tryParse(value.trim().replaceAll(',', '.'));
     if (measurement == null ||
         !measurement.isFinite ||
-        measurement < 1 ||
+        measurement < 0 ||
         measurement > 99999999.99 ||
         measurement * 100 != (measurement * 100).round()) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -330,7 +330,7 @@ class _CartScreenState extends State<CartScreen> {
                               children: [
                                 IconButton.outlined(
                                   tooltip: 'Giảm',
-                                  onPressed: item.measurement <= 1
+                                  onPressed: item.measurement <= 0
                                       ? null
                                       : () =>
                                             _adjustMeasurement(index, -step),
@@ -436,7 +436,7 @@ class _CartScreenState extends State<CartScreen> {
                                     .toList(growable: false),
                               },
                             ),
-                      child: const Text('Tiếp tục đặt đơn'),
+                      child: const Text('Đặt lịch'),
                     ),
                   ),
                 ],

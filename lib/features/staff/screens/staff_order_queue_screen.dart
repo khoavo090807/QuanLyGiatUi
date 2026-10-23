@@ -9,7 +9,6 @@ import 'package:app_quanly_giaiui/core/theme/app_typography.dart';
 import 'package:app_quanly_giaiui/core/utils/formatter_utils.dart';
 import 'package:app_quanly_giaiui/features/auth/data/auth_repository.dart';
 import 'package:app_quanly_giaiui/features/order/data/order_repository.dart';
-import 'package:app_quanly_giaiui/features/order/widgets/order_confirmation_info.dart';
 import 'package:app_quanly_giaiui/features/staff/data/staff_booking_repository.dart';
 import 'package:app_quanly_giaiui/features/staff/screens/staff_delivery_confirmation_screen.dart';
 
@@ -25,6 +24,7 @@ class _StaffOrderQueueScreenState extends State<StaffOrderQueueScreen> {
   final _orderRepository = OrderRepository();
   final _staffRepository = StaffBookingRepository();
   late Future<_StaffQueueData> _queueFuture;
+  _StaffQueueData? _queueData;
   bool _isUpdating = false;
 
   @override
@@ -43,9 +43,15 @@ class _StaffOrderQueueScreenState extends State<StaffOrderQueueScreen> {
       },
     );
     if (!roles.any({'Nhân viên', 'Quản lý', 'Chủ cửa hàng'}.contains)) {
-      return _StaffQueueData(roles: roles, orders: const []);
+      return _setQueueData(
+        _StaffQueueData(
+          roles: roles,
+          orders: const [],
+          completedBookings: const [],
+        ),
+      );
     }
-    final orders = await _orderRepository.getStaffQueue().timeout(
+    final queueFuture = _orderRepository.getStaffQueue().timeout(
       const Duration(seconds: 45),
       onTimeout: () {
         throw TimeoutException(
@@ -53,7 +59,31 @@ class _StaffOrderQueueScreenState extends State<StaffOrderQueueScreen> {
         );
       },
     );
-    return _StaffQueueData(roles: roles, orders: orders);
+    final bookingHistoryFuture = _orderRepository
+        .getStaffBookingHistory()
+        .timeout(
+          const Duration(seconds: 45),
+          onTimeout: () => throw TimeoutException(
+            'Máy chủ mất quá nhiều thời gian để tải lịch sử Booking.',
+          ),
+        );
+    final results = await Future.wait([queueFuture, bookingHistoryFuture]);
+    return _setQueueData(
+      _StaffQueueData(
+        roles: roles,
+        orders: results[0],
+        completedBookings: results[1],
+      ),
+    );
+  }
+
+  _StaffQueueData _setQueueData(_StaffQueueData data) {
+    if (mounted) {
+      setState(() => _queueData = data);
+    } else {
+      _queueData = data;
+    }
+    return data;
   }
 
   Future<void> _refresh() async {
@@ -85,6 +115,104 @@ class _StaffOrderQueueScreenState extends State<StaffOrderQueueScreen> {
       _ => const [],
     };
   }
+
+  List<LaundryOrderRecord> _ordersForTab(
+    List<LaundryOrderRecord> orders,
+    int tab,
+  ) {
+    final filtered = orders.where((order) {
+      if (tab == 0) return order.orderId == null;
+      if (order.orderId == null) return false;
+      final isHistory = const {
+        'Đã giao',
+        'Hoàn thành',
+        'Đã hủy',
+        'Đã thanh toán',
+      }.contains(order.status);
+      return tab == 2 ? isHistory : !isHistory;
+    }).toList();
+    if (tab == 0) {
+      filtered.sort(
+        (left, right) => (left.appointment ?? DateTime(9999))
+            .compareTo(right.appointment ?? DateTime(9999)),
+      );
+    }
+    return filtered;
+  }
+
+  Widget _queueTab(List<LaundryOrderRecord> orders, String emptyMessage) =>
+      RefreshIndicator(
+        onRefresh: _refresh,
+        child: orders.isEmpty
+            ? ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: [
+                  const SizedBox(height: 100),
+                  SizedBox(
+                    height: 220,
+                    child: _QueueState(message: emptyMessage),
+                  ),
+                ],
+              )
+            : ListView.separated(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(16),
+                itemCount: orders.length + 1,
+                separatorBuilder: (context, index) =>
+                    const SizedBox(height: 10),
+                itemBuilder: (context, index) {
+                  if (index == 0) {
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 2),
+                      child: Text(
+                        '${orders.length} việc được phân công',
+                        style: AppTypography.bodySmall,
+                      ),
+                    );
+                  }
+                  final order = orders[index - 1];
+                  return _StaffOrderCard(
+                    order: order,
+                    nextStatuses: _nextStatuses(order),
+                    isUpdating: _isUpdating,
+                    onInspect: () => _openInspection(order.bookingId!),
+                    onTransition: (status) => _transition(order, status),
+                  );
+                },
+              ),
+      );
+
+  Widget _historyTabs(_StaffQueueData queue) => DefaultTabController(
+    length: 2,
+    child: Column(
+      children: [
+        Material(
+          color: Theme.of(context).colorScheme.surface,
+          child: TabBar(
+            isScrollable: false,
+            tabs: [
+              Tab(text: 'Đơn hàng (${_ordersForTab(queue.orders, 2).length})'),
+              Tab(text: 'Booking (${queue.completedBookings.length})'),
+            ],
+          ),
+        ),
+        Expanded(
+          child: TabBarView(
+            children: [
+              _queueTab(
+                _ordersForTab(queue.orders, 2),
+                'Chưa có đơn hàng hoàn tất hoặc đã hủy.',
+              ),
+              _queueTab(
+                queue.completedBookings,
+                'Chưa có Booking nào bạn đã nhận và kiểm kê thành công.',
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
 
   Future<void> _transition(LaundryOrderRecord order, String newStatus) async {
     if (newStatus == 'Đã giao' && order.deliveryMethod == 'Tại nhà') {
@@ -162,79 +290,93 @@ class _StaffOrderQueueScreenState extends State<StaffOrderQueueScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Nhận đồ & đơn hàng của bạn'),
-        actions: [
-          IconButton(
-            tooltip: 'Làm mới',
-            onPressed: _refresh,
-            icon: const Icon(Icons.refresh),
-          ),
-          IconButton(
-            tooltip: 'Đăng xuất',
-            onPressed: () async {
-              await _authRepository.signOut();
-              if (context.mounted) context.goNamed(AppRoutes.login);
-            },
-            icon: const Icon(Icons.logout),
-          ),
-        ],
-      ),
-      body: FutureBuilder<_StaffQueueData>(
-        future: _queueFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            return _QueueState(
-              message: _queueErrorMessage(snapshot.error),
-              action: TextButton(
-                onPressed: _refresh,
-                child: const Text('Thử lại'),
-              ),
-            );
-          }
-
-          final queue = snapshot.data!;
-          if (!queue.roles.any(
-            (role) =>
-                role == 'Nhân viên' ||
-                role == 'Chủ cửa hàng' ||
-                role.startsWith('Quản lý'),
-          )) {
-            return const _QueueState(
-              icon: Icons.lock_outline,
-              message: 'Tài khoản không có quyền vận hành đơn hàng.',
-            );
-          }
-          if (queue.orders.isEmpty) {
-            return const _QueueState(
-              icon: Icons.receipt_long_outlined,
-              message: 'Chưa có booking nhận tại nhà nào được phân công.',
-            );
-          }
-
-          return RefreshIndicator(
-            onRefresh: _refresh,
-            child: ListView.separated(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.all(16),
-              itemCount: queue.orders.length,
-              separatorBuilder: (context, index) => const SizedBox(height: 10),
-              itemBuilder: (context, index) => _StaffOrderCard(
-                order: queue.orders[index],
-                nextStatuses: _nextStatuses(queue.orders[index]),
-                isUpdating: _isUpdating,
-                onInspect: () =>
-                    _openInspection(queue.orders[index].bookingId!),
-                onTransition: (status) =>
-                    _transition(queue.orders[index], status),
-              ),
+    return DefaultTabController(
+      length: 3,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Nhận đồ & đơn hàng của bạn'),
+          actions: [
+            IconButton(
+              tooltip: 'Làm mới',
+              onPressed: _refresh,
+              icon: const Icon(Icons.refresh),
             ),
-          );
-        },
+            IconButton(
+              tooltip: 'Đăng xuất',
+              onPressed: () async {
+                await _authRepository.signOut();
+                if (context.mounted) context.goNamed(AppRoutes.login);
+              },
+              icon: const Icon(Icons.logout),
+            ),
+          ],
+        ),
+        body: FutureBuilder<_StaffQueueData>(
+          future: _queueFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError) {
+              return _QueueState(
+                message: _queueErrorMessage(snapshot.error),
+                action: TextButton(
+                  onPressed: _refresh,
+                  child: const Text('Thử lại'),
+                ),
+              );
+            }
+
+            final queue = snapshot.data!;
+            if (!queue.roles.any(
+              (role) =>
+                  role == 'Nhân viên' ||
+                  role == 'Chủ cửa hàng' ||
+                  role.startsWith('Quản lý'),
+            )) {
+              return const _QueueState(
+                icon: Icons.lock_outline,
+                message: 'Tài khoản không có quyền vận hành đơn hàng.',
+              );
+            }
+            return TabBarView(
+              children: [
+                _queueTab(
+                  _ordersForTab(queue.orders, 0),
+                  'Chưa có Booking nào cần tiếp nhận.',
+                ),
+                _queueTab(
+                  _ordersForTab(queue.orders, 1),
+                  'Không có đơn hàng nào đang xử lý.',
+                ),
+                _historyTabs(queue),
+              ],
+            );
+          },
+        ),
+        bottomNavigationBar: SafeArea(
+          top: false,
+          child: Material(
+            color: Theme.of(context).colorScheme.surface,
+            child: TabBar(
+              isScrollable: false,
+              tabs: [
+                const Tab(
+                  icon: Icon(Icons.move_to_inbox_outlined),
+                  text: 'Nhận đồ',
+                ),
+                const Tab(
+                  icon: Icon(Icons.local_shipping_outlined),
+                  text: 'Giao đồ',
+                ),
+                const Tab(
+                  icon: Icon(Icons.check_circle_outline),
+                  text: 'Hoàn thành',
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -269,10 +411,15 @@ class _StaffOrderQueueScreenState extends State<StaffOrderQueueScreen> {
 }
 
 class _StaffQueueData {
-  const _StaffQueueData({required this.roles, required this.orders});
+  const _StaffQueueData({
+    required this.roles,
+    required this.orders,
+    required this.completedBookings,
+  });
 
   final List<String> roles;
   final List<LaundryOrderRecord> orders;
+  final List<LaundryOrderRecord> completedBookings;
 }
 
 class _StaffOrderCard extends StatelessWidget {
@@ -293,17 +440,36 @@ class _StaffOrderCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isBooking = order.orderId == null;
-    final actions = isBooking
-        ? const ['Kiểm tra & tạo đơn']
-        : nextStatuses
-              .where((status) {
-                if (order.deliveryMethod == 'Tại nhà' &&
-                    (status == 'Đang giao' || status == 'Đã giao')) {
-                  return order.canConfirmDelivery;
-                }
-                return true;
-              })
-              .toList(growable: false);
+    final List<String> actions;
+    if (order.isCompletedBooking) {
+      actions = const [];
+    } else if (isBooking) {
+      actions = const ['Kiểm tra & tạo đơn'];
+    } else {
+      actions = nextStatuses
+          .where((status) {
+            if (order.deliveryMethod == 'Tại nhà' &&
+                (status == 'Đang giao' || status == 'Đã giao')) {
+              return order.canConfirmDelivery;
+            }
+            return true;
+          })
+          .toList(growable: false);
+    }
+    final String typeDescription;
+    if (order.isCompletedBooking) {
+      typeDescription = 'Booking đã tiếp nhận và kiểm kê thành công';
+    } else if (isBooking) {
+      typeDescription = 'Booking cần kiểm tra và nhận đồ';
+    } else if (order.status == 'Đã hủy') {
+      typeDescription = 'Đơn hàng đã hủy';
+    } else if (const {'Đã giao', 'Hoàn thành', 'Đã thanh toán'}.contains(
+      order.status,
+    )) {
+      typeDescription = 'Đơn hàng đã hoàn tất';
+    } else {
+      typeDescription = 'Đơn hàng đang xử lý';
+    }
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -327,28 +493,56 @@ class _StaffOrderCard extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            isBooking
-                ? 'Booking cần kiểm tra và nhận đồ'
-                : 'Đơn hàng đang xử lý',
+            typeDescription,
             style: AppTypography.bodySmall.copyWith(
               color: isBooking ? AppColors.primary : AppColors.textMuted,
               fontWeight: FontWeight.w600,
             ),
           ),
-          const SizedBox(height: 8),
-          Text(order.lineDescription, style: AppTypography.bodyText),
-          if (order.logisticsSummary case final logistics?) ...[
-            const SizedBox(height: 4),
-            Text(logistics, style: AppTypography.bodySmall),
+          if (order.customerName?.isNotEmpty == true) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Khách: ${order.customerName}${order.customerPhone?.isNotEmpty == true ? ' · ${order.customerPhone}' : ''}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.bodySmall,
+            ),
           ],
-          const SizedBox(height: 12),
-          OrderConfirmationInfo(
-            details: order.toDisplayDetails(),
-            compact: true,
-          ),
+          if (order.appointment != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Hẹn: ${FormatterUtils.formatDateTime(order.appointment!)}',
+              style: AppTypography.bodySmall,
+            ),
+          ],
           const SizedBox(height: 8),
           Text(
-            isBooking && !order.hasLaundryDetails
+            'Dịch vụ: ${order.lineDescription}',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: AppTypography.bodySmall,
+          ),
+          if (order.pickupMethod != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Nhận: ${order.pickupMethod}${order.pickupAddress?.isNotEmpty == true ? ' · ${order.pickupAddress}' : ''}',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.bodySmall,
+            ),
+          ],
+          if (order.deliveryMethod != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Trả: ${order.deliveryMethod}${order.deliveryAddress?.isNotEmpty == true ? ' · ${order.deliveryAddress}' : ''}',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.bodySmall,
+            ),
+          ],
+          const SizedBox(height: 8),
+          Text(
+            isBooking && !order.isCompletedBooking && !order.hasLaundryDetails
                 ? 'Kiểm kê để báo giá'
                 : FormatterUtils.formatVnd(order.totalVnd),
             style: AppTypography.title.copyWith(color: AppColors.primary),

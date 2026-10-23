@@ -248,6 +248,9 @@ List<LaundryOrderItem> _parseOrderItems(List<dynamic>? details) {
         final measurement =
             _asNum(detail['KhoiLuong'] ?? detail['SoLuong']) ?? 0;
         return LaundryOrderItem(
+          serviceId: _asInt(detail['DichVuID']),
+          itemTypeId: _asInt(detail['LoaiDoGiatID']),
+          unitId: _asInt(detail['DonViTinhID']),
           serviceName: _asString(service?['TenDichVu']) ?? 'Dịch vụ',
           itemTypeName: _asString(itemType?['TenLoaiDoGiat']) ?? 'Đồ giặt',
           unitSymbol: _asString(unit?['KyHieu']) ?? '',
@@ -292,6 +295,7 @@ class LaundryOrderRecord {
     this.customerName,
     this.customerPhone,
     this.canConfirmDelivery = false,
+    this.isCompletedBooking = false,
   });
 
   final int? orderId;
@@ -325,6 +329,7 @@ class LaundryOrderRecord {
   final String? customerName;
   final String? customerPhone;
   final bool canConfirmDelivery;
+  final bool isCompletedBooking;
 
   String? get logisticsSummary {
     final methods = <String>[];
@@ -390,6 +395,7 @@ class LaundryOrderRecord {
   factory LaundryOrderRecord.fromBookingJson(
     Map<String, dynamic> json, {
     Map<String, dynamic>? linkedOrder,
+    bool isCompletedBooking = false,
   }) {
     final details = json['ChiTietBooking'] as List<dynamic>? ?? const [];
     final items = _parseOrderItems(details);
@@ -450,8 +456,9 @@ class LaundryOrderRecord {
       orderNumber: linkedOrder?['MaDonHang'] is String
           ? FormatterUtils.formatOrderCode(linkedOrder!['MaDonHang'] as String)
           : json['MaBooking'] as String,
-      status:
-          linkedOrder?['TrangThai'] as String? ?? bookingStatus.displayValue,
+      status: isCompletedBooking
+          ? 'Đã kiểm kê'
+          : linkedOrder?['TrangThai'] as String? ?? bookingStatus.displayValue,
       totalVnd: finalTotalVnd,
       createdAt: DateTime.parse(json['NgayTao'] as String),
       lineDescription: descriptions.isEmpty
@@ -463,6 +470,7 @@ class LaundryOrderRecord {
       pickupDeliveryFeeVnd: _asNum(json['PickupDeliveryFee']) ?? 0,
       deliveryDistanceMeters: _asInt(json['DeliveryDistanceMeters']) ?? 0,
       deliveryLegFeeVnd: _asNum(json['DeliveryFee']) ?? 0,
+      isCompletedBooking: isCompletedBooking,
     );
   }
 }
@@ -512,6 +520,7 @@ class LaundryOrderDetails {
     this.appointment,
     this.notes,
     this.items,
+    this.requestedServices = const [],
     this.subtotalVnd,
     this.deliveryFeeVnd = 0,
     this.pointsUsed = 0,
@@ -532,6 +541,7 @@ class LaundryOrderDetails {
   final DateTime? appointment;
   final String? notes;
   final List<LaundryOrderItem>? items;
+  final List<LaundryRequestedService> requestedServices;
   final num? subtotalVnd;
   final num deliveryFeeVnd;
   final int pointsUsed;
@@ -542,8 +552,29 @@ class LaundryOrderDetails {
   final num? finalTotalVnd;
 }
 
+class LaundryRequestedService {
+  const LaundryRequestedService({
+    this.serviceId,
+    this.itemTypeId,
+    this.unitId,
+    required this.serviceName,
+    required this.itemTypeName,
+    required this.unitSymbol,
+  });
+
+  final int? serviceId;
+  final int? itemTypeId;
+  final int? unitId;
+  final String serviceName;
+  final String itemTypeName;
+  final String unitSymbol;
+}
+
 class LaundryOrderItem {
   const LaundryOrderItem({
+    this.serviceId,
+    this.itemTypeId,
+    this.unitId,
     required this.serviceName,
     required this.itemTypeName,
     required this.unitSymbol,
@@ -552,6 +583,9 @@ class LaundryOrderItem {
     required this.totalVnd,
   });
 
+  final int? serviceId;
+  final int? itemTypeId;
+  final int? unitId;
   final String serviceName;
   final String itemTypeName;
   final String unitSymbol;
@@ -832,7 +866,17 @@ class OrderRepository {
     });
   }
 
-  LaundryOrderRecord _staffBookingRecord(Map<String, dynamic> booking) {
+  Future<List<LaundryOrderRecord>> getStaffBookingHistory() async {
+    final bookings = await _staffBookingRepository.getCompletedBookings();
+    return bookings
+        .map((booking) => _staffBookingRecord(booking, isCompletedBooking: true))
+        .toList(growable: false);
+  }
+
+  LaundryOrderRecord _staffBookingRecord(
+    Map<String, dynamic> booking, {
+    bool isCompletedBooking = false,
+  }) {
     final items = (booking['items'] as List<dynamic>? ?? const [])
         .whereType<Map>()
         .map((item) => Map<String, dynamic>.from(item))
@@ -865,13 +909,17 @@ class OrderRepository {
       'HinhThucGiaoDo': booking['return_method'],
       'DiaChiNhan': booking['receive_address'],
       'DiaChiGiao': booking['return_address'],
+      'KhachHang': {
+        'HoTen': (booking['customer'] as Map?)?['name'],
+        'SoDienThoai': (booking['customer'] as Map?)?['phone'],
+      },
       'NgayHen': appointmentDate,
       'GioHen': appointmentTime,
       'GhiChu': booking['note'],
       'PickupDeliveryFee': booking['pickup_fee'],
       'DeliveryFee': booking['return_fee'],
       'ChiTietBooking': items,
-    });
+    }, isCompletedBooking: isCompletedBooking);
   }
 
   Future<List<LaundryOrderRecord>> _getBookings({
@@ -1090,11 +1138,15 @@ class OrderRepository {
           'DeliveryDistanceMeters,DeliveryFee,NgayHen,GioHen,GhiChu,PhuongThucThanhToan,'
           'DiemSuDung,TienGiamDoDiem,KhuyenMaiID,'
           'KhuyenMai(MaKhuyenMai,LoaiKhuyenMai,GiaTriGiam,GiaTriDonToiThieu,MucGiamToiDa),'
+          'BookingYeuCauDichVu('
+          'DichVu(DichVuID,TenDichVu),LoaiDoGiat(LoaiDoGiatID,TenLoaiDoGiat),'
+          'DonViTinh(DonViTinhID,KyHieu,TenDonViTinh)'
+          '),'
           'ChiTietBooking('
-          'SoLuong,KhoiLuong,DonGia,ThanhTien,'
-          'DichVu(TenDichVu),'
-          'LoaiDoGiat(TenLoaiDoGiat),'
-          'DonViTinh(KyHieu)'
+          'DichVuID,LoaiDoGiatID,DonViTinhID,SoLuong,KhoiLuong,DonGia,ThanhTien,'
+          'DichVu(DichVuID,TenDichVu),'
+          'LoaiDoGiat(LoaiDoGiatID,TenLoaiDoGiat),'
+          'DonViTinh(DonViTinhID,KyHieu)'
           ')',
         )
         .eq('BookingID', bookingId)
@@ -1185,6 +1237,9 @@ class OrderRepository {
           final unitPrice = detail['DonGia'] as num? ?? 0;
           final total = detail['ThanhTien'] as num? ?? 0;
           return LaundryOrderItem(
+            serviceId: _asInt(detail['DichVuID']),
+            itemTypeId: _asInt(detail['LoaiDoGiatID']),
+            unitId: _asInt(detail['DonViTinhID']),
             serviceName: service?['TenDichVu'] as String? ?? 'Dịch vụ',
             itemTypeName: itemType?['TenLoaiDoGiat'] as String? ?? 'Đồ giặt',
             unitSymbol: unit?['KyHieu'] as String? ?? '',
@@ -1194,6 +1249,45 @@ class OrderRepository {
           );
         })
         .toList(growable: false);
+    final inspectedServiceKeys = items
+        .where(
+          (item) =>
+              item.serviceId != null &&
+              item.itemTypeId != null &&
+              item.unitId != null,
+        )
+        .map((item) => '${item.serviceId}:${item.itemTypeId}:${item.unitId}')
+        .toSet();
+    final requestedServices =
+        (booking['BookingYeuCauDichVu'] as List<dynamic>? ?? const [])
+            .map((entry) {
+              final request = entry as Map<String, dynamic>;
+              final service = request['DichVu'] as Map<String, dynamic>?;
+              final garment = request['LoaiDoGiat'] as Map<String, dynamic>?;
+              final unit = request['DonViTinh'] as Map<String, dynamic>?;
+              return LaundryRequestedService(
+                serviceId: (service?['DichVuID'] as num?)?.toInt(),
+                itemTypeId: (garment?['LoaiDoGiatID'] as num?)?.toInt(),
+                unitId: (unit?['DonViTinhID'] as num?)?.toInt(),
+                serviceName: service?['TenDichVu'] as String? ?? 'Dịch vụ',
+                itemTypeName:
+                    garment?['TenLoaiDoGiat'] as String? ?? 'Đồ giặt',
+                unitSymbol:
+                    unit?['KyHieu'] as String? ??
+                    unit?['TenDonViTinh'] as String? ??
+                    '',
+              );
+            })
+            .where(
+              (service) =>
+                  service.serviceId == null ||
+                  service.itemTypeId == null ||
+                  service.unitId == null ||
+                  !inspectedServiceKeys.contains(
+                    '${service.serviceId}:${service.itemTypeId}:${service.unitId}',
+                  ),
+            )
+            .toList(growable: false);
 
     return LaundryOrderDetails(
       order: record,
@@ -1215,6 +1309,7 @@ class OrderRepository {
       appointment: appointment,
       notes: booking['GhiChu'] as String?,
       items: items.isNotEmpty ? items : null,
+      requestedServices: requestedServices,
       subtotalVnd: bookingSubtotalVnd,
       deliveryFeeVnd:
           linkedOrder?['PhiGiaoHang'] as num? ?? bookingDeliveryFeeVnd,
@@ -1291,6 +1386,7 @@ class OrderRepository {
 
   Future<CreatedLaundryBooking> submitCartOrder({
     required Iterable<CartItem> items,
+    Iterable<LaundryPriceOption> requestedServices = const [],
     required bool usePoints,
     required String paymentMethod,
     required String pickupMethod,
@@ -1319,9 +1415,18 @@ class OrderRepository {
     final trimmedNotes = notes.trim().isEmpty ? null : notes.trim();
 
     final result = await _client.rpc(
-      'submit_laundry_booking_with_delivery',
+      'submit_laundry_booking_with_requested_services',
       params: {
         'p_items': itemsJson,
+        'p_requested_services': requestedServices
+            .map(
+              (service) => {
+                'service_id': service.serviceId,
+                'garment_id': service.itemTypeId,
+                'unit_id': service.unitId,
+              },
+            )
+            .toList(growable: false),
         'p_use_points': usePoints,
         'p_phuongthucthanhtoan': paymentMethod,
         'p_hinhthucnhando': pickupMethod,
@@ -1347,6 +1452,7 @@ class OrderRepository {
   }
 
   Future<CreatedLaundryBooking> submitBookingWithoutDetails({
+    Iterable<LaundryPriceOption> requestedServices = const [],
     required String paymentMethod,
     required String pickupMethod,
     required String deliveryMethod,
@@ -1371,9 +1477,18 @@ class OrderRepository {
     );
 
     final result = await _client.rpc(
-      'submit_laundry_booking_with_delivery',
+      'submit_laundry_booking_with_requested_services',
       params: {
         'p_items': null,
+        'p_requested_services': requestedServices
+            .map(
+              (service) => {
+                'service_id': service.serviceId,
+                'garment_id': service.itemTypeId,
+                'unit_id': service.unitId,
+              },
+            )
+            .toList(growable: false),
         'p_use_points': false,
         'p_phuongthucthanhtoan': paymentMethod,
         'p_hinhthucnhando': pickupMethod,

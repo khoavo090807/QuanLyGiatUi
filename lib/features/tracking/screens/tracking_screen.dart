@@ -22,6 +22,9 @@ class TrackingScreen extends StatefulWidget {
 }
 
 class _TrackingScreenState extends State<TrackingScreen> {
+  static const _unspecifiedServicesPrefix =
+      'Khách chọn dịch vụ chưa rõ số lượng: ';
+
   final _repository = OrderRepository();
   late Future<LaundryOrderDetails> _detailsFuture;
 
@@ -53,6 +56,27 @@ class _TrackingScreenState extends State<TrackingScreen> {
   }
 
   String _formatVnd(num value) => FormatterUtils.formatVnd(value);
+
+  List<String> _unspecifiedServicesFromNotes(String? notes) => (notes ?? '')
+      .split('\n')
+      .where((line) => line.startsWith(_unspecifiedServicesPrefix))
+      .expand(
+        (line) => line
+            .substring(_unspecifiedServicesPrefix.length)
+            .replaceFirst(RegExp(r'\.$'), '')
+            .split(', '),
+      )
+      .where((name) => name.isNotEmpty)
+      .toList(growable: false);
+
+  String? _visibleNotes(String? notes) {
+    final visible = (notes ?? '')
+        .split('\n')
+        .where((line) => !line.startsWith(_unspecifiedServicesPrefix))
+        .join('\n')
+        .trim();
+    return visible.isEmpty ? null : visible;
+  }
 
   String _formatDistance(num meters) =>
       '${(meters / 1000).toStringAsFixed(1)} km';
@@ -109,6 +133,19 @@ class _TrackingScreenState extends State<TrackingScreen> {
 
           final details = snapshot.data!;
           final order = details.order;
+          final unspecifiedServices = _unspecifiedServicesFromNotes(
+            details.notes,
+          );
+          final requestedServices = details.requestedServices.isNotEmpty
+              ? details.requestedServices
+                    .map(
+                      (service) =>
+                          '${service.serviceName} · ${service.itemTypeName}'
+                          '${service.unitSymbol.isEmpty ? '' : ' · ${service.unitSymbol}'}',
+                    )
+                    .toList(growable: false)
+              : unspecifiedServices;
+          final visibleNotes = _visibleNotes(details.notes);
           return RefreshIndicator(
             onRefresh: () async {
               final future = _loadDetails();
@@ -170,11 +207,13 @@ class _TrackingScreenState extends State<TrackingScreen> {
                   }),
                 const SizedBox(height: 28),
                 // Chi tiết dịch vụ
-                if (details.items != null && details.items!.isNotEmpty) ...[
+                if ((details.items?.isNotEmpty ?? false) ||
+                    requestedServices.isNotEmpty) ...[
                   _SummarySection(
-                    title: 'Dịch vụ (${details.items!.length} mục)',
-                    children: details.items!
-                        .map(
+                    title:
+                        'Dịch vụ (${(details.items?.length ?? 0) + requestedServices.length} mục)',
+                    children: [
+                      ...(details.items ?? const <LaundryOrderItem>[]).map(
                           (item) => Padding(
                             padding: const EdgeInsets.only(bottom: 12),
                             child: _SummaryRow(
@@ -187,8 +226,17 @@ class _TrackingScreenState extends State<TrackingScreen> {
                                   : '',
                             ),
                           ),
-                        )
-                        .toList(growable: false),
+                        ),
+                      ...requestedServices.map(
+                        (service) => Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: _SummaryRow(
+                            label: '$service\nChờ kiểm tra số lượng/khối lượng',
+                            value: 'Chưa báo giá',
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 20),
                 ] else if (!order.hasLaundryDetails) ...[
@@ -233,8 +281,8 @@ class _TrackingScreenState extends State<TrackingScreen> {
                           label: 'Lịch hẹn',
                           value: _formatDateTime(details.appointment!),
                         ),
-                      if (details.notes != null && details.notes!.isNotEmpty)
-                        _SummaryRow(label: 'Ghi chú', value: details.notes!),
+                      if (visibleNotes != null)
+                        _SummaryRow(label: 'Ghi chú', value: visibleNotes),
                     ],
                   ),
                   const SizedBox(height: 20),

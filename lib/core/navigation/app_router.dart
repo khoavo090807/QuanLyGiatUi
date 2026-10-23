@@ -17,6 +17,7 @@ import 'package:app_quanly_giaiui/features/main_shell.dart';
 import 'package:app_quanly_giaiui/features/services/screens/service_detail_screen.dart';
 import 'package:app_quanly_giaiui/features/services/screens/laundry_catalog_screen.dart';
 import 'package:app_quanly_giaiui/features/services/screens/laundry_item_type_detail_screen.dart';
+import 'package:app_quanly_giaiui/features/services/screens/service_catalog_screen.dart';
 import 'package:app_quanly_giaiui/features/order/screens/create_order_screen.dart';
 import 'package:app_quanly_giaiui/features/order/screens/order_summary_screen.dart';
 import 'package:app_quanly_giaiui/features/order/screens/cart_screen.dart';
@@ -199,6 +200,11 @@ class AppRouter {
             },
           ),
         ],
+      ),
+      GoRoute(
+        path: AppRoutes.serviceCatalogPath,
+        name: AppRoutes.serviceCatalog,
+        builder: (context, state) => const ServiceCatalogScreen(),
       ),
       GoRoute(
         path: AppRoutes.laundryCatalogPath,

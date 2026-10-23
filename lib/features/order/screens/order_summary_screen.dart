@@ -30,6 +30,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       List<CartItem>.from(widget.draft['cart'] as List<dynamic>);
   bool get _provideLaundryDetails =>
       widget.draft['provideLaundryDetails'] as bool? ?? true;
+  List<LaundryPriceOption> get _unspecifiedServices =>
+      List<LaundryPriceOption>.from(
+        widget.draft['unspecifiedServices'] as List<dynamic>? ?? const [],
+      );
   bool get _clearCartAfterSubmit =>
       widget.draft['clearCartAfterSubmit'] as bool? ?? false;
   Set<int>? get _clearCartPriceIds {
@@ -100,6 +104,13 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       setState(() => _errorMessage = appointmentError);
       return;
     }
+    if (_notes.length > 500) {
+      setState(
+        () => _errorMessage =
+            'Ghi chú vượt quá 500 ký tự. Hãy rút gọn ghi chú.',
+      );
+      return;
+    }
     setState(() {
       _isSubmitting = true;
       _errorMessage = null;
@@ -109,6 +120,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       final booking = _provideLaundryDetails
           ? await _repository.submitCartOrder(
               items: _cart,
+              requestedServices: _unspecifiedServices,
               usePoints: _usePoints,
               paymentMethod: _paymentMethod,
               pickupMethod: _pickupMethod,
@@ -122,6 +134,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
               promotionCode: _promotionCode,
             )
           : await _repository.submitBookingWithoutDetails(
+              requestedServices: _unspecifiedServices,
               paymentMethod: _paymentMethod,
               pickupMethod: _pickupMethod,
               deliveryMethod: _deliveryMethod,
@@ -194,31 +207,45 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           ],
           _SummarySection(
             title: _provideLaundryDetails
-                ? 'Dịch vụ (${_cart.length} mục)'
-                : 'Thông tin đồ giặt',
-            children: _provideLaundryDetails
-                ? _cart
-                      .map(
-                        (item) => Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: _SummaryRow(
-                            label:
-                                '${item.price.serviceName} · ${item.price.itemTypeName}\n'
-                                '${item.measurement} ${item.price.unitSymbol} × '
-                                '${_formatVnd(item.price.unitPriceVnd)}',
-                            value: _formatVnd(
-                              item.estimatedTotalMinorUnits / 100,
-                            ),
-                          ),
-                        ),
-                      )
-                      .toList(growable: false)
-                : const [
-                    Text(
-                      'Cửa hàng sẽ kiểm nhận đồ, xác định dịch vụ và báo giá sau khi nhận đồ.',
-                      style: TextStyle(color: AppColors.textSecondary),
-                    ),
-                  ],
+                ? 'Dịch vụ (${_cart.length + _unspecifiedServices.length} mục)'
+                : _unspecifiedServices.isEmpty
+                ? 'Thông tin đồ giặt'
+                : 'Dịch vụ đã chọn',
+            children: [
+              if (!_provideLaundryDetails)
+                const Text(
+                  'Cửa hàng sẽ kiểm nhận đồ và báo giá sau khi nhận đồ.',
+                  style: TextStyle(color: AppColors.textSecondary),
+                ),
+              ..._cart.map(
+                (item) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: _SummaryRow(
+                    label:
+                        '${item.price.serviceName} · ${item.price.itemTypeName}\n'
+                        '${item.measurement} ${item.price.unitSymbol} × '
+                        '${_formatVnd(item.price.unitPriceVnd)}',
+                    value: _formatVnd(item.estimatedTotalMinorUnits / 100),
+                  ),
+                ),
+              ),
+              ..._unspecifiedServices.map(
+                (price) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: _SummaryRow(
+                    label:
+                        '${price.serviceName} · ${price.itemTypeName}\n'
+                        'Chưa biết số lượng/khối lượng (${price.unitSymbol})',
+                    value: 'Chưa báo giá',
+                  ),
+                ),
+              ),
+              if (_unspecifiedServices.isNotEmpty)
+                const Text(
+                  'Tổng tiền của các dịch vụ này chưa phải là giá chính thức, cửa hàng sẽ kiểm tra số lượng thực tế và điều chỉnh tổng tiền sau.',
+                  style: TextStyle(color: AppColors.textSecondary),
+                ),
+            ],
           ),
           const SizedBox(height: 20),
           _SummarySection(
@@ -273,8 +300,12 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
               if (_provideLaundryDetails)
                 _SummaryRow(
                   label: booking == null
-                      ? 'Tổng tiền đơn hàng (ước tính)'
-                      : 'Tổng tiền đơn hàng theo bảng giá',
+                      ? _unspecifiedServices.isEmpty
+                            ? 'Tổng tiền đơn hàng (ước tính)'
+                            : 'Tạm tính các mục đã rõ số lượng'
+                      : _unspecifiedServices.isEmpty
+                      ? 'Tổng tiền đơn hàng theo bảng giá'
+                      : 'Tạm tính các mục đã rõ số lượng',
                   value: _formatVnd(_estimatedOrderTotalVnd),
                 )
               else
@@ -407,6 +438,7 @@ class _SummaryRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
+            flex: 2,
             child: Text(
               label,
               style: TextStyle(
@@ -416,13 +448,17 @@ class _SummaryRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          Flexible(
-            child: Text(
-              value,
-              textAlign: TextAlign.end,
-              style: TextStyle(
-                color: emphasize ? AppColors.primary : AppColors.textPrimary,
-                fontWeight: emphasize ? FontWeight.bold : null,
+          Expanded(
+            flex: 3,
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                value,
+                textAlign: TextAlign.end,
+                style: TextStyle(
+                  color: emphasize ? AppColors.primary : AppColors.textPrimary,
+                  fontWeight: emphasize ? FontWeight.bold : null,
+                ),
               ),
             ),
           ),

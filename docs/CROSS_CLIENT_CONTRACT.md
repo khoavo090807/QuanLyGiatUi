@@ -20,7 +20,7 @@ trên Flutter cần đăng nhập Supabase Auth thật.
 
 | RPC | Người gọi | Mục đích |
 | --- | --- | --- |
-| `submit_laundry_booking_with_delivery` | Khách | Tạo booking nhiều dòng, hình thức nhận/trả, điểm, khuyến mãi và phương thức thanh toán đã chọn |
+| `submit_laundry_booking_with_requested_services` | Khách | Tạo booking, chi tiết đã biết và các dịch vụ khách muốn dùng nhưng chưa thể cân/đếm |
 | `confirm_laundry_booking` / `confirm_laundry_booking_without_details` | Nhân sự/web | Xác nhận booking và tạo đơn duy nhất |
 | `transition_laundry_order` | Nhân sự | Chuyển trạng thái đơn theo state machine |
 | `cancel_laundry_booking` | Chủ booking | Hủy booking `ChoTiepNhan` chưa có đơn |
@@ -29,6 +29,11 @@ trên Flutter cần đăng nhập Supabase Auth thật.
 
 Các RPC tạo booking nhận `p_idempotency_key` và trả về JSON có tối thiểu
 `bookingid`, `mabooking`, `thanhtien`, `tiengiamdodiem`, `thanhtoan`.
+
+`BookingYeuCauDichVu` lưu lựa chọn dịch vụ/loại đồ/đơn vị mà khách muốn dùng
+khi chưa biết số lượng hoặc khối lượng. Các dòng này chỉ là yêu cầu, không có
+đơn giá và không được tính vào đơn hàng. `ChiTietBooking` vẫn chỉ lưu số lượng
+hoặc khối lượng thực tế đã kiểm kê.
 
 Booking có từng chặng tại nhà phải kèm `p_delivery_fee_quote_id` từ Edge Function
 `delivery-fee-quote`. Backend kiểm tra báo giá còn hạn, đúng tài khoản và đúng
@@ -44,15 +49,16 @@ Booking có từng chặng tại nhà phải kèm `p_delivery_fee_quote_id` từ
 
 UI chỉ hiển thị nhãn tiếng Việt; không tự suy ra hoặc bỏ qua transition ở client.
 
-## Luồng tiếp nhận tại quầy
+## Luồng tiếp nhận và kiểm kê
 
-1. Khách vẫn có thể đặt lịch/Booking trên app.
-2. Khi khách mang đồ đến, nhân viên web kiểm tra thực tế và chỉnh sửa Booking
-   (dịch vụ, khối lượng/số lượng, giá snapshot hoặc ghi chú) nếu cần.
-3. Khách xem và đồng ý trực tiếp tại quầy. Không có bước xác nhận bắt buộc trên
-   app, để xử lý được cả khi khách không mang điện thoại.
-4. Nhân viên chọn **Tiếp nhận & tạo đơn** trên web. Transaction xác nhận Booking
-   và tạo/cập nhật Đơn hàng ngay.
+1. Khách chọn dịch vụ và loại đồ trên app; nếu chưa biết cân nặng/số lượng,
+   lựa chọn được lưu thành yêu cầu dịch vụ riêng của Booking.
+2. Nhân viên được phân công nhận đồ, kiểm tra thực tế và nhập dịch vụ, khối
+   lượng/số lượng cùng giá hiện hành vào bản kiểm kê.
+3. Nhân viên báo tổng tiền cho khách trực tiếp và ghi nhận khách đồng ý bằng
+   lời. Khách không cần xác nhận trên app.
+4. Nhân viên xác nhận sự đồng ý trong giao diện nhân viên để tạo đơn. Booking
+   chỉ trở thành Đơn hàng sau thao tác này.
 
 Mỗi lần Booking hoặc Đơn hàng được tạo, hủy, sửa hay đổi trạng thái, trigger
 database ghi một `ThongBao` cho khách để app hiển thị khi đang mở hoặc nạp lại

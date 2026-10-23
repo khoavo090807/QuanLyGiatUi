@@ -20,6 +20,7 @@ class AppRoutes {
 
   // Order Flow
   static const String serviceDetail = 'service-detail';
+  static const String serviceCatalog = 'service-catalog';
   static const String laundryCatalog = 'laundry-catalog';
   static const String laundryItemTypeDetail = 'laundry-item-type-detail';
   static const String createOrder = 'create-order';
@@ -58,6 +59,7 @@ class AppRoutes {
 
   static const String serviceDetailPath =
       'service-detail/:id'; // Relative to home
+  static const String serviceCatalogPath = '/services';
   static const String laundryCatalogPath = '/laundry-catalog';
   static const String laundryItemTypeDetailPath = '/laundry-item-type/:id';
   static const String createOrderPath = 'create-order'; // Relative to home

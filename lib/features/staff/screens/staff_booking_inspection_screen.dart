@@ -24,6 +24,7 @@ class _StaffBookingInspectionScreenState
   final _receiveAddress = TextEditingController();
   final _returnAddress = TextEditingController();
   final _note = TextEditingController();
+  final _addressSuggestions = AddressSuggestionService();
   late Future<Map<String, dynamic>> _bookingFuture;
   Map<String, dynamic>? _booking;
   List<Map<String, dynamic>> _prices = const [];
@@ -40,9 +41,13 @@ class _StaffBookingInspectionScreenState
   bool _isEstimating = false;
   bool _isSaving = false;
   bool _isSubmitting = false;
+  bool _isCancelling = false;
   bool _draftSaved = false;
-  bool _receiveAddressVerified = false;
   bool _returnAddressVerified = false;
+  bool _isSuggestingAddress = false;
+  Timer? _addressDebounce;
+  List<String> _returnAddressOptions = const [];
+  int _addressSearchGeneration = 0;
 
   @override
   void initState() {
@@ -60,7 +65,6 @@ class _StaffBookingInspectionScreenState
     _returnMethod = booking['return_method']?.toString() ?? 'Tại cửa hàng';
     _receiveAddress.text = booking['receive_address']?.toString() ?? '';
     _returnAddress.text = booking['return_address']?.toString() ?? '';
-    _receiveAddressVerified = _receiveAddress.text.trim().isNotEmpty;
     _returnAddressVerified = _returnAddress.text.trim().isNotEmpty;
     _note.text = booking['note']?.toString() ?? '';
     _appointmentDate =
@@ -131,6 +135,7 @@ class _StaffBookingInspectionScreenState
 
   @override
   void dispose() {
+    _addressDebounce?.cancel();
     _receiveAddress.dispose();
     _returnAddress.dispose();
     _note.dispose();
@@ -227,6 +232,78 @@ class _StaffBookingInspectionScreenState
     }
   }
 
+  Future<void> _refuseQuote() async {
+    if (_isSubmitting || _isSaving || _isEstimating || _isCancelling) return;
+    final formKey = GlobalKey<FormState>();
+    var rejectionReason = '';
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Xác nhận khách từ chối báo giá'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Booking sẽ bị hủy, không tạo đơn và không thu phí nhận đồ. '
+              'Dữ liệu kiểm kê cùng lý do sẽ được lưu để tra cứu.',
+            ),
+            const SizedBox(height: 16),
+            Form(
+              key: formKey,
+              child: TextFormField(
+                autofocus: true,
+                minLines: 3,
+                maxLines: 5,
+                maxLength: 500,
+                onChanged: (value) => rejectionReason = value,
+                decoration: const InputDecoration(
+                  labelText: 'Lý do khách từ chối *',
+                  alignLabelWithHint: true,
+                ),
+                validator: (value) => value == null || value.trim().isEmpty
+                    ? 'Vui lòng nhập lý do khách từ chối.'
+                    : null,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Quay lại kiểm kê'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () {
+              if (formKey.currentState?.validate() != true) return;
+              Navigator.pop(dialogContext, rejectionReason.trim());
+            },
+            child: const Text('Hủy Booking và lưu lý do'),
+          ),
+        ],
+      ),
+    );
+    if (reason == null || !mounted) return;
+
+    setState(() => _isCancelling = true);
+    try {
+      await _repository.refuseQuote(widget.bookingId, {
+        ..._payload(),
+        'rejection_reason': reason,
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Đã hủy Booking và lưu lý do khách từ chối.')),
+      );
+      Navigator.of(context).pop(true);
+    } catch (error) {
+      _showError(error);
+    } finally {
+      if (mounted) setState(() => _isCancelling = false);
+    }
+  }
+
   Future<void> _saveDraft() async {
     if (!_formKey.currentState!.validate() || !_itemsAreComplete()) return;
     if (_estimate == null) {
@@ -288,6 +365,49 @@ class _StaffBookingInspectionScreenState
     return message;
   }
 
+  void _searchReturnAddress(String value) {
+    _addressDebounce?.cancel();
+    final query = value.trim();
+    final generation = ++_addressSearchGeneration;
+    if (query.length < 5) {
+      setState(() {
+        _returnAddressOptions = const [];
+        _isSuggestingAddress = false;
+      });
+      return;
+    }
+    setState(() => _isSuggestingAddress = true);
+    _addressDebounce = Timer(const Duration(milliseconds: 700), () async {
+      try {
+        final suggestions = await _addressSuggestions.suggest(query);
+        if (!mounted || generation != _addressSearchGeneration) return;
+        setState(() {
+          _returnAddressOptions = suggestions;
+          _isSuggestingAddress = false;
+        });
+      } catch (_) {
+        if (!mounted || generation != _addressSearchGeneration) return;
+        setState(() {
+          _returnAddressOptions = const [];
+          _isSuggestingAddress = false;
+        });
+      }
+    });
+  }
+
+  void _selectReturnAddress(String address) {
+    _addressSearchGeneration++;
+    _addressDebounce?.cancel();
+    _returnAddress
+      ..text = address
+      ..selection = TextSelection.collapsed(offset: address.length);
+    setState(() {
+      _returnAddressVerified = true;
+      _returnAddressOptions = const [];
+      _invalidateEstimate();
+    });
+  }
+
   List<Map<String, dynamic>> _serviceOptions(int? categoryId) => _services
       .where((service) => service['category_id'] == categoryId)
       .toList();
@@ -312,40 +432,6 @@ class _StaffBookingInspectionScreenState
     symbol: '₫',
     decimalDigits: 0,
   ).format(_asNum(value) ?? 0);
-
-  Future<void> _pickDate() async {
-    final initial = DateTime.tryParse(_appointmentDate) ?? DateTime.now();
-    final result = await showDatePicker(
-      context: context,
-      initialDate: initial,
-      firstDate: DateTime.now().subtract(const Duration(days: 365)),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
-    );
-    if (result != null) {
-      setState(() {
-        _appointmentDate = DateFormat('yyyy-MM-dd').format(result);
-        _invalidateEstimate();
-      });
-    }
-  }
-
-  Future<void> _pickTime() async {
-    final parts = _appointmentTime.split(':');
-    final result = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay(
-        hour: int.tryParse(parts.firstOrNull ?? '') ?? 9,
-        minute: int.tryParse(parts.length > 1 ? parts[1] : '') ?? 0,
-      ),
-    );
-    if (result != null) {
-      setState(() {
-        _appointmentTime =
-            '${result.hour.toString().padLeft(2, '0')}:${result.minute.toString().padLeft(2, '0')}';
-        _invalidateEstimate();
-      });
-    }
-  }
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -392,7 +478,7 @@ class _StaffBookingInspectionScreenState
               _customerCard(_booking!),
               const SizedBox(height: 18),
               _sectionTitle(
-                'LỊCH NHẬN VÀ TRẢ ĐỒ',
+                'THÔNG TIN NHẬN VÀ GIAO ĐỒ',
                 Icons.local_shipping_outlined,
               ),
               const SizedBox(height: 8),
@@ -496,18 +582,40 @@ class _StaffBookingInspectionScreenState
                     : (value) =>
                           setState(() => _customerAgreed = value ?? false),
                 title: const Text(
-                  'Khách đã xem Booking cập nhật và đồng ý bằng lời',
+                  'Nhân viên xác nhận khách đã đồng ý bằng lời',
                 ),
                 subtitle: Text(
                   _draftSaved
-                      ? 'Chỉ đánh dấu sau khi đã hỏi khách trực tiếp.'
-                      : 'Lưu Booking trước để khách xem thông tin mới.',
+                      ? 'Hãy báo kết quả kiểm kê và tổng tiền rồi hỏi khách trực tiếp; khách không cần thao tác trên ứng dụng.'
+                      : 'Lưu thông tin kiểm kê và tính giá trước khi báo khách trực tiếp.',
                 ),
                 controlAffinity: ListTileControlAffinity.leading,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
                 ),
                 tileColor: AppColors.surface,
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: _isCancelling || _isSaving || _isEstimating || _isSubmitting
+                    ? null
+                    : _refuseQuote,
+                icon: _isCancelling
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.cancel_outlined),
+                label: const Text('Khách từ chối — Hủy Booking'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.red,
+                  side: const BorderSide(color: Colors.red),
+                  minimumSize: const Size.fromHeight(48),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
               ),
               const SizedBox(height: 8),
               FilledButton.icon(
@@ -659,43 +767,35 @@ class _StaffBookingInspectionScreenState
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Lịch nhận và trả đồ',
+            'Lịch nhận và giao đồ',
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: 8),
-          DropdownButtonFormField<String>(
-            initialValue: _receiveMethod,
-            decoration: const InputDecoration(labelText: 'Hình thức nhận'),
-            items: _methods
-                .map(
-                  (value) => DropdownMenuItem(value: value, child: Text(value)),
-                )
-                .toList(),
-            onChanged: (value) => setState(() {
-              _receiveMethod = value ?? _receiveMethod;
-              _invalidateEstimate();
-            }),
+          _infoLine(
+            Icons.storefront_outlined,
+            'Hình thức nhận đồ',
+            _receiveMethod,
           ),
-          const SizedBox(height: 12),
           if (_receiveMethod == 'Tại nhà')
-            _StaffAddressInput(
-              key: const ValueKey('receive-address'),
-              controller: _receiveAddress,
-              label: 'Địa chỉ nhận đồ',
-              isVerified: _receiveAddressVerified,
-              onChanged: (_) => setState(() {
-                _receiveAddressVerified = false;
-                _invalidateEstimate();
-              }),
-              onSelect: (_) => setState(() {
-                _receiveAddressVerified = true;
-                _invalidateEstimate();
-              }),
+            _infoLine(
+              Icons.location_on_outlined,
+              'Địa chỉ nhận đồ',
+              _receiveAddress.text,
             ),
-          if (_receiveMethod == 'Tại nhà') const SizedBox(height: 12),
+          _infoLine(
+            Icons.calendar_month_outlined,
+            'Ngày hẹn',
+            _appointmentDate.isEmpty ? 'Chưa chọn ngày' : _appointmentDate,
+          ),
+          _infoLine(
+            Icons.schedule,
+            'Giờ hẹn',
+            _appointmentTime.isEmpty ? 'Chưa chọn giờ' : _appointmentTime,
+          ),
+          const Divider(height: 24),
           DropdownButtonFormField<String>(
             initialValue: _returnMethod,
-            decoration: const InputDecoration(labelText: 'Hình thức trả'),
+            decoration: const InputDecoration(labelText: 'Hình thức giao đồ'),
             items: _methods
                 .map(
                   (value) => DropdownMenuItem(value: value, child: Text(value)),
@@ -706,86 +806,114 @@ class _StaffBookingInspectionScreenState
               _invalidateEstimate();
             }),
           ),
-          const SizedBox(height: 12),
-          if (_returnMethod == 'Tại nhà')
-            _StaffAddressInput(
-              key: const ValueKey('return-address'),
-              controller: _returnAddress,
-              label: 'Địa chỉ trả đồ',
-              isVerified: _returnAddressVerified,
-              onChanged: (_) => setState(() {
-                _returnAddressVerified = false;
-                _invalidateEstimate();
-              }),
-              onSelect: (_) => setState(() {
-                _returnAddressVerified = true;
-                _invalidateEstimate();
-              }),
-            ),
-          if (_returnMethod == 'Tại nhà') const SizedBox(height: 12),
-          const SizedBox(height: 6),
-          _appointmentPicker(
-            label: 'Ngày hẹn',
-            value: _appointmentDate.isEmpty
-                ? 'Chưa chọn ngày'
-                : _appointmentDate,
-            icon: Icons.calendar_month_outlined,
-            onTap: _pickDate,
+          if (_returnMethod == 'Tại nhà') ...[
+            const SizedBox(height: 12),
+            _deliveryAddressField(),
+          ],
+          _infoLine(
+            Icons.payments_outlined,
+            'Phí nhận đã lưu',
+            _money(_booking?['pickup_fee']),
           ),
-          const SizedBox(height: 8),
-          _appointmentPicker(
-            label: 'Giờ hẹn',
-            value: _appointmentTime.isEmpty
-                ? 'Chưa chọn giờ'
-                : _appointmentTime,
-            icon: Icons.schedule,
-            onTap: _pickTime,
+          _infoLine(
+            Icons.payments_outlined,
+            'Phí giao đã lưu',
+            _money(_booking?['return_fee']),
           ),
-          Text('Phí nhận đã lưu: ${_money(_booking?['pickup_fee'])}'),
-          Text('Phí trả đã lưu: ${_money(_booking?['return_fee'])}'),
         ],
       ),
     ),
   );
 
-  Widget _appointmentPicker({
-    required String label,
-    required String value,
-    required IconData icon,
-    required VoidCallback onTap,
-  }) => InkWell(
-    onTap: onTap,
-    borderRadius: BorderRadius.circular(12),
-    child: Container(
-      constraints: const BoxConstraints(minHeight: 52),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.divider),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, size: 20, color: AppColors.primary),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text.rich(
-              TextSpan(
-                style: const TextStyle(color: AppColors.textPrimary),
-                children: [
-                  TextSpan(
-                    text: '$label: ',
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  TextSpan(text: value),
-                ],
+  Widget _infoLine(IconData icon, String label, String value) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 7),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 20, color: AppColors.primary),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 12,
+                ),
               ),
-              softWrap: true,
-            ),
+              const SizedBox(height: 2),
+              SelectableText(
+                value,
+                style: const TextStyle(color: AppColors.textPrimary),
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     ),
+  );
+
+  Widget _deliveryAddressField() => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      TextFormField(
+        controller: _returnAddress,
+        maxLines: 2,
+        maxLength: 255,
+        textInputAction: TextInputAction.done,
+        onChanged: (value) {
+          setState(() {
+            _returnAddressVerified = false;
+            _invalidateEstimate();
+          });
+          _searchReturnAddress(value);
+        },
+        validator: (value) {
+          if (_returnMethod != 'Tại nhà') return null;
+          if (value?.trim().isNotEmpty != true) {
+            return 'Nhập địa chỉ giao đồ.';
+          }
+          return _returnAddressVerified
+              ? null
+              : 'Chọn địa chỉ giao đồ từ danh sách gợi ý.';
+        },
+        decoration: const InputDecoration(
+          labelText: 'Địa chỉ giao đồ',
+          hintText: 'Nhập địa chỉ để xem gợi ý',
+          prefixIcon: Icon(Icons.location_on_outlined),
+        ),
+      ),
+      if (_isSuggestingAddress)
+        const LinearProgressIndicator(minHeight: 2)
+      else if (_returnAddressOptions.isNotEmpty)
+        Card(
+          margin: EdgeInsets.zero,
+          child: Column(
+            children: _returnAddressOptions
+                .map(
+                  (address) => ListTile(
+                    dense: true,
+                    leading: const Icon(Icons.location_on_outlined),
+                    title: Text(address),
+                    onTap: () => _selectReturnAddress(address),
+                  ),
+                )
+                .toList(growable: false),
+          ),
+        )
+      else if (_returnAddress.text.trim().length >= 5 &&
+          !_returnAddressVerified)
+        const Padding(
+          padding: EdgeInsets.only(top: 6),
+          child: Text(
+            'Chọn địa chỉ đề xuất để xác nhận địa chỉ giao đồ.',
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+          ),
+        ),
+      const SizedBox(height: 12),
+    ],
   );
 
   Widget _lineCard(int index, _InspectionLine line) {
@@ -798,7 +926,23 @@ class _StaffBookingInspectionScreenState
             .map((service) => _asInt(service['category_id']))
             .firstOrNull;
     final serviceOptions = _serviceOptions(categoryId);
+    final garmentOptions = _garments
+        .where(
+          (garment) => _prices.any(
+            (price) =>
+                price['service_id'] == line.serviceId &&
+                price['garment_id'] == garment['id'],
+          ),
+        )
+        .toList();
+    final selectedGarmentHasPrice = garmentOptions.any(
+      (garment) => garment['id'] == line.garmentId,
+    );
+    final selectedGarment = _garments
+        .where((garment) => garment['id'] == line.garmentId)
+        .firstOrNull;
     return Card(
+      margin: const EdgeInsets.only(bottom: 12),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -818,11 +962,15 @@ class _StaffBookingInspectionScreenState
                       _lines.removeAt(index).dispose();
                       _invalidateEstimate();
                     }),
-                    icon: const Icon(Icons.delete_outline),
+                    icon: const Icon(
+                      Icons.delete_outline,
+                      color: AppColors.error,
+                    ),
                     tooltip: 'Xóa mặt hàng',
                   ),
               ],
             ),
+            const SizedBox(height: 12),
             DropdownButtonFormField<int>(
               key: ValueKey('category-$index-$categoryId'),
               initialValue: categoryId,
@@ -874,21 +1022,17 @@ class _StaffBookingInspectionScreenState
               key: ValueKey(
                 'garment-$index-${line.serviceId}-${line.garmentId}',
               ),
-              initialValue: _garments.any((row) => row['id'] == line.garmentId)
-                  ? line.garmentId
-                  : null,
+              initialValue: selectedGarmentHasPrice ? line.garmentId : null,
               decoration: const InputDecoration(labelText: 'Loại đồ giặt'),
-              items: line.serviceId == null
-                  ? const []
-                  : _garments
-                        .map(
-                          (row) => DropdownMenuItem<int>(
-                            value: _asInt(row['id'])!,
-                            child: Text(row['name'].toString()),
-                          ),
-                        )
-                        .toList(),
-              onChanged: line.serviceId == null
+              items: garmentOptions
+                  .map(
+                    (row) => DropdownMenuItem<int>(
+                      value: _asInt(row['id'])!,
+                      child: Text(row['name'].toString()),
+                    ),
+                  )
+                  .toList(),
+              onChanged: line.serviceId == null || garmentOptions.isEmpty
                   ? null
                   : (value) => setState(() {
                       line.garmentId = value;
@@ -896,6 +1040,21 @@ class _StaffBookingInspectionScreenState
                       _invalidateEstimate();
                     }),
             ),
+            if (line.serviceId != null &&
+                (garmentOptions.isEmpty ||
+                    (line.garmentId != null && !selectedGarmentHasPrice)))
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  garmentOptions.isEmpty
+                      ? 'Dịch vụ này chưa có loại đồ nào trong bảng giá.'
+                      : '${selectedGarment?['name'] ?? 'Loại đồ đã chọn'} chưa có giá cho dịch vụ này. Hãy chọn loại đồ được hỗ trợ.',
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
             const SizedBox(height: 12),
             DropdownButtonFormField<int>(
               key: ValueKey(
@@ -1026,134 +1185,6 @@ class _StaffBookingInspectionScreenState
   }
 
   static const _methods = ['Tại cửa hàng', 'Tại nhà'];
-}
-
-class _StaffAddressInput extends StatefulWidget {
-  const _StaffAddressInput({
-    required this.controller,
-    required this.label,
-    required this.isVerified,
-    required this.onChanged,
-    required this.onSelect,
-    super.key,
-  });
-
-  final TextEditingController controller;
-  final String label;
-  final bool isVerified;
-  final ValueChanged<String> onChanged;
-  final ValueChanged<String> onSelect;
-
-  @override
-  State<_StaffAddressInput> createState() => _StaffAddressInputState();
-}
-
-class _StaffAddressInputState extends State<_StaffAddressInput> {
-  final _suggestionService = AddressSuggestionService();
-  Timer? _debounce;
-  List<String> _suggestions = const [];
-  bool _isSearching = false;
-  int _searchGeneration = 0;
-
-  @override
-  void dispose() {
-    _debounce?.cancel();
-    super.dispose();
-  }
-
-  void _search(String value) {
-    _debounce?.cancel();
-    final query = value.trim();
-    final generation = ++_searchGeneration;
-    if (query.length < 5) {
-      setState(() {
-        _suggestions = const [];
-        _isSearching = false;
-      });
-      return;
-    }
-    setState(() => _isSearching = true);
-    _debounce = Timer(const Duration(milliseconds: 700), () async {
-      try {
-        final suggestions = await _suggestionService.suggest(query);
-        if (!mounted || generation != _searchGeneration) return;
-        setState(() {
-          _suggestions = suggestions;
-          _isSearching = false;
-        });
-      } catch (_) {
-        if (!mounted || generation != _searchGeneration) return;
-        setState(() {
-          _suggestions = const [];
-          _isSearching = false;
-        });
-      }
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      TextFormField(
-        controller: widget.controller,
-        maxLines: 2,
-        maxLength: 255,
-        textInputAction: TextInputAction.done,
-        onChanged: (value) {
-          widget.onChanged(value);
-          _search(value);
-        },
-        validator: (value) {
-          if (value?.trim().isNotEmpty != true) return 'Nhập ${widget.label}.';
-          return widget.isVerified
-              ? null
-              : 'Chọn địa chỉ thật từ danh sách gợi ý.';
-        },
-        decoration: InputDecoration(
-          labelText: widget.label,
-          hintText: 'Nhập địa chỉ để xem gợi ý',
-          prefixIcon: const Icon(Icons.location_on_outlined),
-        ),
-      ),
-      if (_isSearching)
-        const LinearProgressIndicator(minHeight: 2)
-      else if (_suggestions.isNotEmpty)
-        Card(
-          margin: EdgeInsets.zero,
-          child: Column(
-            children: _suggestions
-                .map(
-                  (suggestion) => ListTile(
-                    dense: true,
-                    leading: const Icon(Icons.location_on_outlined),
-                    title: Text(suggestion),
-                    onTap: () {
-                      _searchGeneration++;
-                      _debounce?.cancel();
-                      widget.controller
-                        ..text = suggestion
-                        ..selection = TextSelection.collapsed(
-                          offset: suggestion.length,
-                        );
-                      setState(() => _suggestions = const []);
-                      widget.onSelect(suggestion);
-                    },
-                  ),
-                )
-                .toList(growable: false),
-          ),
-        )
-      else if (widget.controller.text.trim().length >= 5 && !widget.isVerified)
-        Padding(
-          padding: const EdgeInsets.only(top: 6),
-          child: Text(
-            'Chọn địa chỉ gợi ý để xác nhận địa chỉ hợp lệ.',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-        ),
-    ],
-  );
 }
 
 class _InspectionLine {

@@ -44,6 +44,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   final _addressSuggestionService = AddressSuggestionService();
   final _cartStore = CartStore.instance;
   final List<CartItem> _draftItems = [];
+  final Set<int> _unspecifiedPriceIds = {};
   late Future<_OrderFormData> _formDataFuture;
   Set<int>? _checkoutPriceIds;
 
@@ -71,7 +72,6 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   String _paymentMethod = 'Tiền mặt';
   String _pickupMethod = 'Tại cửa hàng';
   String _serviceSearchQuery = '';
-  bool _provideLaundryDetails = false;
   late DateTime _appointment;
   bool _usePointsForDiscount = false;
   String _deliveryMethod = 'Tại cửa hàng';
@@ -94,7 +94,6 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
         : Set<int>.from(widget.selectedCartPriceIds!);
     final tomorrow = DateTime.now().add(const Duration(days: 1));
     _appointment = DateTime(tomorrow.year, tomorrow.month, tomorrow.day, 10);
-    _provideLaundryDetails = widget.checkoutCart;
     if (widget.checkoutCart) _cartStore.addListener(_onCartChanged);
     _formDataFuture = _loadFormData();
     _loadAvailablePoints();
@@ -119,7 +118,6 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     final prices = result[0] as List<LaundryPriceOption>;
     if (widget.checkoutCart) {
       await _cartStore.restore(prices);
-      if (_cart.isNotEmpty) _provideLaundryDetails = true;
     }
     return _OrderFormData(
       prices: prices,
@@ -142,6 +140,9 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   void _onCartChanged() {
     if (mounted) setState(() {});
   }
+
+  bool get _provideLaundryDetails =>
+      _cart.any((item) => item.measurement > 0);
 
   int get _cartTotalMinorUnits {
     var total = 0;
@@ -586,6 +587,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   }
 
   void _clearCart() {
+    setState(() => _unspecifiedPriceIds.clear());
     if (widget.checkoutCart) {
       final selectedIds = _checkoutPriceIds;
       if (selectedIds == null) {
@@ -596,38 +598,6 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     } else {
       setState(() => _draftItems.clear());
     }
-  }
-
-  Future<void> _setStoreInspectionMode(bool storeWillInspect) async {
-    if (storeWillInspect && widget.checkoutCart && _cart.isNotEmpty) {
-      final shouldClear = await showDialog<bool>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: const Text('Bỏ các mục trong giỏ?'),
-          content: const Text(
-            'Khi để cửa hàng tự kiểm nhận, các dịch vụ và số lượng đang chọn sẽ không được gửi cùng đơn.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Quay lại'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('Bỏ mục và tiếp tục'),
-            ),
-          ],
-        ),
-      );
-      if (shouldClear != true || !mounted) return;
-      _cartStore.clear();
-    }
-
-    if (!mounted) return;
-    if (storeWillInspect && !widget.checkoutCart) _draftItems.clear();
-    setState(() {
-      _provideLaundryDetails = !storeWillInspect;
-    });
   }
 
   Future<void> _chooseAppointment() async {
@@ -950,10 +920,11 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     List<LaundryPriceOption> availablePrices,
   ) async {
     _serviceSearchQuery = '';
-    final quantities = <int, int>{
-      for (final item in _cart) item.price.priceId: item.measurement.toInt(),
+    final selections = <int, num?>{
+      for (final item in _cart) item.price.priceId: item.measurement,
+      for (final priceId in _unspecifiedPriceIds) priceId: null,
     };
-    final selected = await showModalBottomSheet<Map<int, int>>(
+    final selected = await showModalBottomSheet<Map<int, num?>>(
       context: context,
       isScrollControlled: true,
       builder: (sheetContext) => StatefulBuilder(
@@ -1006,7 +977,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                         ),
                         const SizedBox(width: 6),
                         Text(
-                          'Chạm vào ô số lượng để nhập nhanh',
+                          'Chọn dịch vụ bằng ô đánh dấu; để số lượng 0 nếu chưa biết.',
                           style: AppTypography.caption.copyWith(
                             color: AppColors.textSecondary,
                           ),
@@ -1021,96 +992,181 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                             )
                           : ListView.separated(
                               itemCount: filteredPrices.length,
+                              padding: const EdgeInsets.symmetric(vertical: 4),
                               separatorBuilder: (_, _) =>
-                                  const Divider(height: 1),
+                                  const SizedBox(height: 8),
                               itemBuilder: (context, index) {
                                 final price = filteredPrices[index];
-                                final quantity = quantities[price.priceId] ?? 0;
+                                final selection = selections[price.priceId];
+                                final quantity = selection ?? 0;
+                                final isSelected = selections.containsKey(
+                                  price.priceId,
+                                );
                                 Future<void> editQuantity() async {
                                   final value = await showDialog<int>(
                                     context: context,
                                     builder: (_) => _QuantityInputDialog(
-                                      initialQuantity: quantity,
+                                      initialQuantity: quantity.round(),
                                       unitSymbol: price.unitSymbol,
                                     ),
                                   );
                                   if (value != null) {
                                     setSheetState(
-                                      () => quantities[price.priceId] = value,
+                                      () => selections[price.priceId] = value,
                                     );
                                   }
                                 }
 
-                                return ListTile(
-                                  leading: const Icon(
-                                    Icons.local_laundry_service_outlined,
+                                return Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.surface,
+                                    border: Border.all(
+                                      color: AppColors.primaryLight,
+                                    ),
+                                    borderRadius: BorderRadius.circular(14),
                                   ),
-                                  title: Text(
-                                    '${price.serviceName} · ${price.itemTypeName}',
-                                  ),
-                                  subtitle: Text(
-                                    '${_formatVnd(price.unitPriceVnd)} / ${price.unitSymbol}',
-                                  ),
-                                  trailing: Row(
-                                    mainAxisSize: MainAxisSize.min,
+                                  child: Column(
                                     children: [
-                                      IconButton(
-                                        tooltip: 'Giảm số lượng',
-                                        onPressed: quantity == 0
-                                            ? null
-                                            : () => setSheetState(
-                                                () =>
-                                                    quantities[price.priceId] =
-                                                        quantity - 1,
-                                              ),
-                                        icon: const Icon(
-                                          Icons.remove_circle_outline,
-                                        ),
-                                      ),
-                                      InkWell(
-                                        onTap: editQuantity,
-                                        borderRadius: BorderRadius.circular(6),
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                            vertical: 5,
+                                      Row(
+                                        children: [
+                                          Checkbox(
+                                            value: isSelected,
+                                            onChanged: (checked) =>
+                                                setSheetState(() {
+                                                  if (checked == true) {
+                                                    selections[price.priceId] =
+                                                        null;
+                                                  } else {
+                                                    selections.remove(
+                                                      price.priceId,
+                                                    );
+                                                  }
+                                                }),
                                           ),
-                                          decoration: BoxDecoration(
-                                            color: AppColors.surface,
-                                            border: Border.all(
+                                          Container(
+                                            width: 38,
+                                            height: 38,
+                                            decoration: BoxDecoration(
                                               color: AppColors.primaryLight,
+                                              borderRadius:
+                                                  BorderRadius.circular(11),
                                             ),
+                                            child: const Icon(
+                                              Icons.local_laundry_service_outlined,
+                                              color: AppColors.primary,
+                                              size: 21,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 10),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  '${price.serviceName} · ${price.itemTypeName}',
+                                                  style: AppTypography.bodyText
+                                                      .copyWith(
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                      ),
+                                                ),
+                                                const SizedBox(height: 3),
+                                                Text(
+                                                  '${_formatVnd(price.unitPriceVnd)} / ${price.unitSymbol}',
+                                                  style: AppTypography.caption
+                                                      .copyWith(
+                                                        color: AppColors
+                                                            .textSecondary,
+                                                      ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Row(
+                                        children: [
+                                          const Spacer(),
+                                          IconButton(
+                                            tooltip: 'Giảm số lượng',
+                                            visualDensity:
+                                                VisualDensity.compact,
+                                            onPressed: quantity == 0
+                                                ? null
+                                                : () => setSheetState(() {
+                                                    if (quantity <= 1) {
+                                                      selections[price.priceId] =
+                                                          null;
+                                                    } else {
+                                                      selections[price.priceId] =
+                                                          quantity - 1;
+                                                    }
+                                                  }),
+                                            icon: const Icon(
+                                              Icons.remove_circle_outline,
+                                            ),
+                                          ),
+                                          InkWell(
+                                            onTap: !isSelected
+                                                ? null
+                                                : editQuantity,
                                             borderRadius: BorderRadius.circular(
                                               8,
                                             ),
-                                          ),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Text(
-                                                '$quantity',
-                                                textAlign: TextAlign.center,
-                                                style: AppTypography.title,
+                                            child: Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 9,
+                                                    vertical: 7,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color: AppColors.surface,
+                                                border: Border.all(
+                                                  color: AppColors.primaryLight,
+                                                ),
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
                                               ),
-                                              const SizedBox(width: 4),
-                                              const Icon(
-                                                Icons.edit_outlined,
-                                                size: 14,
-                                                color: AppColors.primary,
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Text(
+                                                    '$quantity',
+                                                    textAlign: TextAlign.center,
+                                                    style: AppTypography.title
+                                                        .copyWith(
+                                                          color: AppColors
+                                                              .textPrimary,
+                                                        ),
+                                                  ),
+                                                  const SizedBox(width: 4),
+                                                  Icon(
+                                                    Icons.edit_outlined,
+                                                    size: 14,
+                                                    color: !isSelected
+                                                        ? AppColors.textMuted
+                                                        : AppColors.primary,
+                                                  ),
+                                                ],
                                               ),
-                                            ],
+                                            ),
                                           ),
-                                        ),
-                                      ),
-                                      IconButton(
-                                        tooltip: 'Tăng số lượng',
-                                        onPressed: () => setSheetState(
-                                          () => quantities[price.priceId] =
-                                              quantity + 1,
-                                        ),
-                                        icon: const Icon(
-                                          Icons.add_circle_outline,
-                                        ),
+                                          IconButton(
+                                            tooltip: 'Tăng số lượng',
+                                            visualDensity:
+                                                VisualDensity.compact,
+                                            onPressed: () => setSheetState(
+                                              () => selections[price.priceId] =
+                                                  quantity + 1,
+                                            ),
+                                            icon: const Icon(
+                                              Icons.add_circle_outline,
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ],
                                   ),
@@ -1124,7 +1180,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                       child: FilledButton(
                         onPressed: () => Navigator.pop(
                           sheetContext,
-                          Map<int, int>.from(quantities),
+                          Map<int, num?>.from(selections),
                         ),
                         child: const Text('Xong'),
                       ),
@@ -1141,46 +1197,63 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     if (selected == null || !mounted) return;
     setState(() {
       for (final price in availablePrices) {
-        final quantity = selected[price.priceId] ?? 0;
+        final quantity = selected[price.priceId];
+        final isSelected = selected.containsKey(price.priceId);
         if (widget.checkoutCart) {
           final index = _cartStore.items.indexWhere(
             (item) => item.price.priceId == price.priceId,
           );
-          if (quantity == 0) {
+          if (!isSelected || quantity == null) {
             if (index >= 0) _cartStore.removeAt(index);
-            _checkoutPriceIds?.remove(price.priceId);
-          } else if (index >= 0) {
-            _cartStore.setMeasurement(index, quantity);
-          } else {
-            _cartStore.add(CartItem(price: price, measurement: quantity));
-            _checkoutPriceIds?.add(price.priceId);
+            if (!isSelected) {
+              _checkoutPriceIds?.remove(price.priceId);
+              _unspecifiedPriceIds.remove(price.priceId);
+            }
+          }
+          if (isSelected && quantity == null) {
+            _unspecifiedPriceIds.add(price.priceId);
+          } else if (isSelected && quantity != null) {
+            _unspecifiedPriceIds.remove(price.priceId);
+            if (index >= 0) {
+              _cartStore.setMeasurement(index, quantity);
+            } else {
+              _cartStore.add(CartItem(price: price, measurement: quantity));
+              _checkoutPriceIds?.add(price.priceId);
+            }
           }
         } else {
           final index = _draftItems.indexWhere(
             (item) => item.price.priceId == price.priceId,
           );
-          if (quantity == 0) {
+          if (!isSelected || quantity == null) {
             if (index >= 0) _draftItems.removeAt(index);
-          } else if (index >= 0) {
-            _draftItems[index] = CartItem(price: price, measurement: quantity);
-          } else {
-            _draftItems.add(CartItem(price: price, measurement: quantity));
+            if (!isSelected) _unspecifiedPriceIds.remove(price.priceId);
+          }
+          if (isSelected && quantity == null) {
+            _unspecifiedPriceIds.add(price.priceId);
+          } else if (isSelected && quantity != null) {
+            _unspecifiedPriceIds.remove(price.priceId);
+            if (index >= 0) {
+              _draftItems[index] = CartItem(
+                price: price,
+                measurement: quantity,
+              );
+            } else {
+              _draftItems.add(CartItem(price: price, measurement: quantity));
+            }
           }
         }
       }
     });
   }
 
-  Future<void> _continueToSummary(List<LoyaltyVoucher> vouchers) async {
+  Future<void> _continueToSummary(
+    List<LoyaltyVoucher> vouchers,
+    List<LaundryPriceOption> allPrices,
+  ) async {
     final appointmentError = ValidatorUtils.validateAppointment(_appointment);
     if (appointmentError != null) {
       _showMessage(appointmentError);
-      return;
-    }
-    if (_provideLaundryDetails && _cart.isEmpty) {
-      _showMessage(
-        'Thêm ít nhất một loại đồ hoặc bỏ chọn mục nhập thông tin đồ giặt.',
-      );
       return;
     }
     if (_pickupMethod == 'Tại nhà' && _pickupAddress == null) {
@@ -1225,13 +1298,28 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     final pointsDiscount = _usePointsForDiscount
         ? LaundryOrderPricing.pointsDiscountMinorUnits(pointsToUse)
         : 0;
+    final zeroQuantityPriceIds = _cart
+        .where((item) => item.measurement == 0)
+        .map((item) => item.price.priceId);
+    final unspecifiedPriceIds = {
+      ..._unspecifiedPriceIds,
+      ...zeroQuantityPriceIds,
+    };
     context.pushNamed(
       AppRoutes.orderSummary,
       extra: {
-        'cart': _cart,
+        'cart': _cart.where((item) => item.measurement > 0).toList(),
         'clearCartAfterSubmit': widget.checkoutCart,
         'clearCartPriceIds': _checkoutPriceIds?.toList(),
         'provideLaundryDetails': _provideLaundryDetails,
+        'unspecifiedServices': unspecifiedPriceIds
+            .map(
+              (priceId) => allPrices
+                  .where((price) => price.priceId == priceId)
+                  .firstOrNull,
+            )
+            .whereType<LaundryPriceOption>()
+            .toList(growable: false),
         'paymentMethod': _paymentMethod,
         'pickupMethod': _pickupMethod,
         'deliveryMethod': _deliveryMethod,
@@ -1286,10 +1374,6 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
           final selectedVoucher = _selectedEligibleVoucher(vouchers);
           final pointsToUse = _pointsToUseAfterPromotion(selectedVoucher);
           final pointsDiscount = _pointsDiscountAfterPromotion(selectedVoucher);
-          if (_provideLaundryDetails && allPrices.isEmpty) {
-            return const Center(child: Text('Hiện chưa có bảng giá khả dụng.'));
-          }
-
           final initialServiceId = widget.initialPriceId == null
               ? null
               : allPrices
@@ -1345,46 +1429,37 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
               children: [
-                SwitchListTile.adaptive(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Để cửa hàng kiểm nhận đồ và báo giá'),
-                  subtitle: const Text(
-                    'Bật nếu bạn chưa biết số lượng hoặc khối lượng đồ giặt.',
-                  ),
-                  value: !_provideLaundryDetails,
-                  onChanged: _setStoreInspectionMode,
+                Text(
+                  'Dịch vụ và loại đồ (không bắt buộc)',
+                  style: AppTypography.heading2,
                 ),
-                if (!_provideLaundryDetails) ...[
-                  const SizedBox(height: 8),
+                const SizedBox(height: 8),
+                const Text(
+                  'Chọn dịch vụ bằng ô đánh dấu. Số lượng để 0 nếu bạn chưa biết; cửa hàng sẽ kiểm nhận và báo giá.',
+                  style: TextStyle(color: AppColors.textSecondary),
+                ),
+                const SizedBox(height: 12),
+                if (availablePrices.isEmpty)
                   const Text(
-                    'Bạn chỉ cần chọn hình thức nhận đồ và lịch hẹn ở bên dưới.',
+                    'Hiện chưa có dịch vụ nào để chọn.',
                     style: TextStyle(color: AppColors.textSecondary),
-                  ),
-                ] else ...[
-                  const SizedBox(height: 20),
-                  Text('Dịch vụ và loại đồ', style: AppTypography.heading2),
-                  const SizedBox(height: 12),
-                  if (availablePrices.isEmpty)
-                    const Text(
-                      'Bạn đã thêm tất cả loại đồ có thể chọn.',
-                      style: TextStyle(color: AppColors.textSecondary),
-                    )
-                  else
-                    OutlinedButton.icon(
-                      onPressed: () => _showServicePicker(availablePrices),
-                      icon: const Icon(Icons.search),
-                      label: const Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text('Chọn dịch vụ và loại đồ giặt'),
-                      ),
+                  )
+                else
+                  OutlinedButton.icon(
+                    onPressed: () => _showServicePicker(availablePrices),
+                    icon: const Icon(Icons.search),
+                    label: const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text('Chọn dịch vụ và loại đồ giặt'),
                     ),
-                  if (_cart.isNotEmpty) ...[
+                  ),
+                if (_cart.isNotEmpty || _unspecifiedPriceIds.isNotEmpty) ...[
                     const SizedBox(height: 24),
                     Row(
                       children: [
                         Expanded(
                           child: Text(
-                            'Các mục đã chọn (${_cart.length})',
+                            'Các mục đã chọn (${_cart.length + _unspecifiedPriceIds.length})',
                             style: AppTypography.heading3,
                           ),
                         ),
@@ -1401,10 +1476,40 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                         onRemove: () => _removeFromCart(entry.$1),
                       ),
                     ),
-                    _EstimateRow(totalMinorUnits: _cartTotalMinorUnits),
+                    ..._unspecifiedPriceIds.map(
+                      (priceId) {
+                        final price = allPrices
+                            .where((item) => item.priceId == priceId)
+                            .firstOrNull;
+                        if (price == null) return const SizedBox.shrink();
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          child: ListTile(
+                            leading: const Icon(
+                              Icons.local_laundry_service_outlined,
+                            ),
+                            title: Text(
+                              '${price.serviceName} · ${price.itemTypeName}',
+                            ),
+                            subtitle: Text(
+                              '0 ${price.unitSymbol} · '
+                              '${FormatterUtils.formatVnd(price.unitPriceVnd)}/${price.unitSymbol}',
+                            ),
+                            trailing: IconButton(
+                              tooltip: 'Bỏ dịch vụ',
+                              onPressed: () => setState(
+                                () => _unspecifiedPriceIds.remove(priceId),
+                              ),
+                              icon: const Icon(Icons.delete_outline),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    if (_cart.isNotEmpty)
+                      _EstimateRow(totalMinorUnits: _cartTotalMinorUnits),
                     const SizedBox(height: 16),
                   ],
-                ],
                 const SizedBox(height: 28),
                 Text(
                   'Hình thức nhân viên nhận đồ',
@@ -1651,7 +1756,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                 ),
                 const SizedBox(height: 20),
                 FilledButton.icon(
-                  onPressed: () => _continueToSummary(vouchers),
+                  onPressed: () => _continueToSummary(vouchers, allPrices),
                   icon: const Icon(Icons.receipt_long_outlined),
                   label: const Text('Xem xác nhận đặt lịch'),
                 ),

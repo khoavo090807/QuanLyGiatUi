@@ -57,7 +57,7 @@ class _LaundryItemTypeDetailScreenState
     final measurement = num.tryParse(value.replaceAll(',', '.'));
     if (measurement == null ||
         !measurement.isFinite ||
-        measurement <= 0 ||
+        measurement < 0 ||
         measurement > 99999999.99 ||
         measurement * 100 != (measurement * 100).round()) {
       ScaffoldMessenger.of(context).showSnackBar(

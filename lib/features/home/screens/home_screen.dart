@@ -12,6 +12,7 @@ import 'package:app_quanly_giaiui/features/notification/data/notification_reposi
 import 'package:app_quanly_giaiui/features/order/data/order_repository.dart';
 import 'package:app_quanly_giaiui/features/order/domain/cart_store.dart';
 import 'package:app_quanly_giaiui/features/order/widgets/cart_icon_button.dart';
+import 'package:app_quanly_giaiui/features/services/service_visual_style.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
@@ -47,7 +48,8 @@ class HomeScreenState extends State<HomeScreen> {
   }
 
   Future<_HomeData> _loadHomeData() async {
-    final prices = await _repository.getActivePrices();
+    final catalog = await _repository.getActiveLaundryCatalog();
+    final prices = catalog.prices;
     await CartStore.instance.restore(prices);
     List<LaundryOrderRecord> orders = const [];
     List<String> roles = const [];
@@ -165,8 +167,13 @@ class HomeScreenState extends State<HomeScreen> {
         onPressed: () => context.pushNamed(AppRoutes.createOrder),
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
-        icon: const Icon(Icons.add),
-        label: const Text(AppStrings.newOrder),
+        extendedPadding: const EdgeInsets.symmetric(horizontal: 14),
+        extendedIconLabelSpacing: 6,
+        icon: const Icon(Icons.add, size: 16),
+        label: const Text(
+          AppStrings.newOrder,
+          style: TextStyle(fontSize: 13),
+        ),
       ),
     );
   }
@@ -252,12 +259,12 @@ class HomeScreenState extends State<HomeScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Container(
-        constraints: const BoxConstraints(minHeight: 216),
+        constraints: const BoxConstraints(minHeight: 180),
         decoration: BoxDecoration(
           gradient: AppColors.heroCardGradient,
           borderRadius: BorderRadius.circular(16),
         ),
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: order == null
@@ -332,36 +339,40 @@ class HomeScreenState extends State<HomeScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
                   Text(
                     'Đơn #${order.orderNumber} · ${order.lineDescription}',
-                    style: AppTypography.bodyText.copyWith(
+                    style: AppTypography.bodySmall.copyWith(
                       color: Colors.white.withValues(alpha: 0.9),
                     ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
                   if (order.logisticsSummary case final logistics?) ...[
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 2),
                     Text(
                       logistics,
                       style: AppTypography.bodySmall.copyWith(
                         color: Colors.white.withValues(alpha: 0.82),
                       ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
                   // Progress bar
                   ClipRRect(
                     borderRadius: BorderRadius.circular(4),
                     child: LinearProgressIndicator(
                       value: 0.35,
-                      minHeight: 6,
+                      minHeight: 4,
                       backgroundColor: Colors.white.withValues(alpha: 0.2),
                       valueColor: const AlwaysStoppedAnimation<Color>(
                         Colors.white,
                       ),
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 4),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -473,7 +484,7 @@ class HomeScreenState extends State<HomeScreen> {
     for (final price in prices) {
       uniqueServices.putIfAbsent(price.serviceId, () => price);
     }
-    final services = uniqueServices.values.toList(growable: false);
+    final services = uniqueServices.values.take(8).toList(growable: false);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -482,13 +493,49 @@ class HomeScreenState extends State<HomeScreen> {
         physics: const NeverScrollableScrollPhysics(),
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 4,
-          mainAxisSpacing: 16,
-          crossAxisSpacing: 12,
-          childAspectRatio: 0.75,
+          mainAxisSpacing: 8,
+          crossAxisSpacing: 8,
+          childAspectRatio: 0.95,
         ),
-        itemCount: services.length,
+        itemCount: services.length + 1,
         itemBuilder: (context, index) {
+          if (index == services.length) {
+            return GestureDetector(
+              onTap: () => context.pushNamed(AppRoutes.serviceCatalog),
+              child: Column(
+                children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryLight,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Icon(
+                      Icons.grid_view_rounded,
+                      color: AppColors.primary,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Xem thêm dịch vụ',
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.textPrimary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            );
+          }
+
           final service = services[index];
+          final visual = ServiceVisualStyle.forService(service);
           return GestureDetector(
             onTap: () {
               context.pushNamed(
@@ -499,23 +546,24 @@ class HomeScreenState extends State<HomeScreen> {
             child: Column(
               children: [
                 Container(
-                  width: 56,
-                  height: 56,
+                  width: 48,
+                  height: 48,
                   decoration: BoxDecoration(
-                    color: _serviceColor(index).withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(16),
+                    color: visual.backgroundColor,
+                    borderRadius: BorderRadius.circular(14),
                   ),
                   child: Icon(
-                    _serviceIcon(service.serviceName),
-                    color: _serviceColor(index),
-                    size: 28,
+                    visual.icon,
+                    color: visual.color,
+                    size: 24,
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 4),
                 Text(
                   service.serviceName,
                   style: AppTypography.caption.copyWith(
                     color: AppColors.textPrimary,
+                    fontSize: 11,
                     fontWeight: FontWeight.w500,
                   ),
                   textAlign: TextAlign.center,
@@ -536,24 +584,6 @@ class HomeScreenState extends State<HomeScreen> {
         '${local.month.toString().padLeft(2, '0')}';
   }
 
-  IconData _serviceIcon(String name) {
-    final normalized = name.toLowerCase();
-    if (normalized.contains('khô')) return Icons.dry_cleaning_outlined;
-    if (normalized.contains('sấy')) return Icons.air_outlined;
-    if (normalized.contains('ủi')) return Icons.iron_outlined;
-    return Icons.water_drop_outlined;
-  }
-
-  Color _serviceColor(int index) {
-    const colors = [
-      AppColors.info,
-      AppColors.secondary,
-      AppColors.warning,
-      AppColors.success,
-      AppColors.accent,
-    ];
-    return colors[index % colors.length];
-  }
 }
 
 class _HomeData {

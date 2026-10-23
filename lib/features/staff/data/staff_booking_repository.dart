@@ -48,6 +48,22 @@ class StaffBookingRepository {
         .toList(growable: false);
   }
 
+  Future<List<Map<String, dynamic>>> getCompletedBookings() async {
+    try {
+      final payload = await _getJsonMap('staff/bookings/history');
+      final data = payload['data'];
+      if (data is! List) return const [];
+      return data
+          .whereType<Map>()
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList(growable: false);
+    } on DioException catch (error) {
+      // shortcut: older API deployments lack Booking history, remove after all deployments upgrade.
+      if (error.response?.statusCode == 404) return const [];
+      rethrow;
+    }
+  }
+
   Future<Map<String, dynamic>> getBooking(int bookingId) async {
     final response = await _dio.get<Map<String, dynamic>>(
       'staff/bookings/$bookingId',
@@ -78,6 +94,17 @@ class StaffBookingRepository {
       options: await _authorizedOptions(),
     );
     return _dataObject(response.data);
+  }
+
+  Future<void> refuseQuote(
+    int bookingId,
+    Map<String, dynamic> payload,
+  ) async {
+    await _dio.post<void>(
+      'staff/bookings/$bookingId/refuse-quote',
+      data: payload,
+      options: await _authorizedOptions(),
+    );
   }
 
   Future<Map<String, dynamic>> saveDraft(

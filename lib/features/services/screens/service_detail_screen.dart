@@ -312,7 +312,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     final measurement = num.tryParse(value.replaceAll(',', '.'));
     if (measurement == null ||
         !measurement.isFinite ||
-        measurement <= 0 ||
+        measurement < 0 ||
         measurement > 99999999.99 ||
         measurement * 100 != (measurement * 100).round()) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -444,7 +444,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                       ),
                       columnWidths: const {
                         0: FlexColumnWidth(2),
-                        1: FlexColumnWidth(2.5),
+                        1: FlexColumnWidth(1.8),
                         2: FlexColumnWidth(1),
                       },
                       children: [
@@ -477,7 +477,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                             Padding(
                               padding: const EdgeInsets.all(8),
                               child: Text(
-                                'Thêm',
+                                'Thêm vào giỏ hàng',
                                 textAlign: TextAlign.center,
                                 style: AppTypography.bodySmall.copyWith(
                                   fontWeight: FontWeight.w600,
@@ -564,7 +564,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                 width: double.infinity,
                 child: FilledButton(
                   onPressed: () => _startOrder(firstPrice.priceId),
-                  child: const Text('Đặt dịch vụ'),
+                  child: const Text('Chọn dịch vụ và đặt lịch'),
                 ),
               ),
             ),

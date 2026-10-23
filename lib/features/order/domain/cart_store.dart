@@ -78,7 +78,10 @@ class CartStore extends ChangeNotifier {
             if (rawItem is! Map) continue;
             final priceId = (rawItem['banggiaid'] as num?)?.toInt();
             final measurement = rawItem['measurement'] as num?;
-            if (priceId == null || measurement == null || measurement <= 0) {
+            if (priceId == null ||
+                measurement == null ||
+                !measurement.isFinite ||
+                measurement < 0) {
               continue;
             }
             final price = pricesById[priceId];
@@ -94,14 +97,13 @@ class CartStore extends ChangeNotifier {
             final existingIndex = _items.indexWhere(
               (item) => item.price.priceId == priceId,
             );
-            final safeMeasurement = measurement < 1 ? 1 : measurement;
             if (existingIndex == -1) {
-              _items.add(CartItem(price: price, measurement: safeMeasurement));
+              _items.add(CartItem(price: price, measurement: measurement));
             } else {
               final existing = _items[existingIndex];
               _items[existingIndex] = CartItem(
                 price: price,
-                measurement: existing.measurement + safeMeasurement,
+                measurement: existing.measurement + measurement,
               );
             }
           }
@@ -120,7 +122,8 @@ class CartStore extends ChangeNotifier {
 
   void add(CartItem item) {
     assert(_isRestored, 'Restore the cart before changing it.');
-    final measurement = item.measurement < 1 ? 1 : item.measurement;
+    if (!item.measurement.isFinite || item.measurement < 0) return;
+    final measurement = item.measurement;
     final index = _items.indexWhere(
       (existing) => existing.price.priceId == item.price.priceId,
     );
@@ -137,7 +140,12 @@ class CartStore extends ChangeNotifier {
   }
 
   void setMeasurement(int index, num measurement) {
-    if (index < 0 || index >= _items.length || measurement < 1) return;
+    if (index < 0 ||
+        index >= _items.length ||
+        !measurement.isFinite ||
+        measurement < 0) {
+      return;
+    }
     final item = _items[index];
     _items[index] = CartItem(price: item.price, measurement: measurement);
     _changed();
