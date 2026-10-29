@@ -8,12 +8,16 @@ import 'package:app_quanly_giaiui/core/theme/app_colors.dart';
 import 'package:app_quanly_giaiui/core/theme/app_typography.dart';
 import 'package:app_quanly_giaiui/core/utils/formatter_utils.dart';
 import 'package:app_quanly_giaiui/features/auth/data/auth_repository.dart';
+import 'package:app_quanly_giaiui/features/auth/data/staff_api_auth_repository.dart';
 import 'package:app_quanly_giaiui/features/order/data/order_repository.dart';
 import 'package:app_quanly_giaiui/features/staff/data/staff_booking_repository.dart';
+import 'package:app_quanly_giaiui/features/profile/screens/profile_screen.dart';
 import 'package:app_quanly_giaiui/features/staff/screens/staff_delivery_confirmation_screen.dart';
 
 class StaffOrderQueueScreen extends StatefulWidget {
-  const StaffOrderQueueScreen({super.key});
+  const StaffOrderQueueScreen({super.key, this.initialTabIndex = 0});
+
+  final int initialTabIndex;
 
   @override
   State<StaffOrderQueueScreen> createState() => _StaffOrderQueueScreenState();
@@ -290,24 +294,32 @@ class _StaffOrderQueueScreenState extends State<StaffOrderQueueScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final storedName = StaffApiAuthRepository.instance.user?['name'];
+    final staffName = storedName is String && storedName.trim().isNotEmpty
+        ? storedName.trim()
+        : 'nhân viên';
+
     return DefaultTabController(
-      length: 3,
+      length: 4,
+      initialIndex: widget.initialTabIndex.clamp(0, 3),
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Nhận đồ & đơn hàng của bạn'),
+          title: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Xin chào, $staffName', style: AppTypography.heading3),
+              const Text(
+                'Chúc bạn một ngày làm việc hiệu quả!',
+                style: AppTypography.bodySmall,
+              ),
+            ],
+          ),
           actions: [
             IconButton(
               tooltip: 'Làm mới',
               onPressed: _refresh,
               icon: const Icon(Icons.refresh),
-            ),
-            IconButton(
-              tooltip: 'Đăng xuất',
-              onPressed: () async {
-                await _authRepository.signOut();
-                if (context.mounted) context.goNamed(AppRoutes.login);
-              },
-              icon: const Icon(Icons.logout),
             ),
           ],
         ),
@@ -350,6 +362,7 @@ class _StaffOrderQueueScreenState extends State<StaffOrderQueueScreen> {
                   'Không có đơn hàng nào đang xử lý.',
                 ),
                 _historyTabs(queue),
+                const ProfileScreen(showAppBar: false),
               ],
             );
           },
@@ -372,6 +385,10 @@ class _StaffOrderQueueScreenState extends State<StaffOrderQueueScreen> {
                 const Tab(
                   icon: Icon(Icons.check_circle_outline),
                   text: 'Hoàn thành',
+                ),
+                const Tab(
+                  icon: Icon(Icons.person_outline),
+                  text: 'Tài khoản',
                 ),
               ],
             ),
@@ -540,13 +557,11 @@ class _StaffOrderCard extends StatelessWidget {
               style: AppTypography.bodySmall,
             ),
           ],
-          const SizedBox(height: 8),
-          Text(
-            isBooking && !order.isCompletedBooking && !order.hasLaundryDetails
-                ? 'Kiểm kê để báo giá'
-                : FormatterUtils.formatVnd(order.totalVnd),
-            style: AppTypography.title.copyWith(color: AppColors.primary),
-          ),
+          if (isBooking && !order.isCompletedBooking && !order.hasLaundryDetails)
+            const Padding(
+              padding: EdgeInsets.only(top: 8),
+              child: Text('Kiểm kê để báo giá'),
+            ),
           if (actions.isNotEmpty) ...[
             const SizedBox(height: 12),
             Wrap(

@@ -1,8 +1,10 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class StaffApiAuthRepository {
   StaffApiAuthRepository._() {
@@ -81,6 +83,103 @@ class StaffApiAuthRepository {
     await _storage.write(key: _tokenKey, value: _token);
     await _storage.write(key: _userKey, value: _encodeUser(_user!));
     authRevision.value++;
+  }
+
+  Future<Map<String, dynamic>> getProfile() async {
+    final response = await dio.get<Map<String, dynamic>>(
+      'staff/profile',
+      options: authorizedOptions(),
+    );
+    final data = response.data?['data'];
+    if (data is! Map) {
+      throw const FormatException('Hồ sơ nhân viên không hợp lệ.');
+    }
+    _user = Map<String, dynamic>.from(data);
+    await _storage.write(key: _userKey, value: _encodeUser(_user!));
+    return _user!;
+  }
+
+  Future<Map<String, dynamic>> updateProfile({
+    required String name,
+    required String phone,
+  }) async {
+    final response = await dio.put<Map<String, dynamic>>(
+      'staff/profile',
+      data: {
+        'name': name.trim(),
+        'phone': phone.trim(),
+      },
+      options: authorizedOptions(),
+    );
+    final data = response.data?['data'];
+    if (data is! Map) {
+      throw const FormatException('Hồ sơ nhân viên không hợp lệ.');
+    }
+    _user = Map<String, dynamic>.from(data);
+    await _storage.write(key: _userKey, value: _encodeUser(_user!));
+    authRevision.value++;
+    return _user!;
+  }
+
+  Future<String> uploadAvatar(Uint8List bytes, String extension) async {
+    if (bytes.isEmpty || bytes.length > 2 * 1024 * 1024) {
+      throw const FormatException('Ảnh đại diện tối đa 2 MB.');
+    }
+    final contentType = switch (extension.toLowerCase()) {
+      'jpg' || 'jpeg' => 'image/jpeg',
+      'png' => 'image/png',
+      'webp' => 'image/webp',
+      _ => throw const FormatException('Định dạng ảnh không được hỗ trợ.'),
+    };
+    final upload = await dio.post<Map<String, dynamic>>(
+      'staff/profile/avatar/upload-url',
+      data: {'content_type': contentType, 'file_size': bytes.length},
+      options: authorizedOptions(),
+    );
+    final uploadData = upload.data;
+    if (uploadData?['path'] is! String ||
+        uploadData?['token'] is! String ||
+        uploadData?['bucket'] is! String) {
+      throw const FormatException(
+        'Máy chủ không trả về thông tin tải ảnh hợp lệ.',
+      );
+    }
+    await Supabase.instance.client.storage
+        .from(uploadData!['bucket'] as String)
+        .uploadBinaryToSignedUrl(
+          uploadData['path'] as String,
+          uploadData['token'] as String,
+          bytes,
+          FileOptions(contentType: contentType, upsert: true),
+        );
+    final response = await dio.post<Map<String, dynamic>>(
+      'staff/profile/avatar',
+      data: {'path': uploadData['path'], 'content_type': contentType},
+      options: authorizedOptions(),
+    );
+    final avatarUrl = response.data?['avatar_url'];
+    if (avatarUrl is! String || avatarUrl.isEmpty) {
+      throw const FormatException('Máy chủ không lưu được ảnh đại diện.');
+    }
+    _user = {...?_user, 'avatar_url': avatarUrl};
+    await _storage.write(key: _userKey, value: _encodeUser(_user!));
+    authRevision.value++;
+    return avatarUrl;
+  }
+
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    await dio.post<void>(
+      'staff/auth/change-password',
+      data: {
+        'current_password': currentPassword,
+        'new_password': newPassword,
+        'new_password_confirmation': newPassword,
+      },
+      options: authorizedOptions(),
+    );
   }
 
   Options authorizedOptions() {

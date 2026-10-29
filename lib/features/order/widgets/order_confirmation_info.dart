@@ -23,9 +23,9 @@ class OrderConfirmationInfo extends StatelessWidget {
       children: [
         _servicesSection(),
         SizedBox(height: compact ? 12 : 20),
-        _paymentSection(),
-        SizedBox(height: compact ? 12 : 20),
         _logisticsSection(),
+        SizedBox(height: compact ? 12 : 20),
+        _paymentSection(),
         SizedBox(height: compact ? 12 : 20),
         _totalsSection(),
       ],
@@ -271,7 +271,7 @@ class _Row extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          Flexible(
+          Expanded(
             child: Text(
               value,
               textAlign: TextAlign.end,

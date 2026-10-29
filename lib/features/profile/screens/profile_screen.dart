@@ -5,9 +5,12 @@ import 'package:app_quanly_giaiui/core/navigation/app_routes.dart';
 import 'package:app_quanly_giaiui/core/theme/app_colors.dart';
 import 'package:app_quanly_giaiui/core/theme/app_typography.dart';
 import 'package:app_quanly_giaiui/features/auth/data/auth_repository.dart';
+import 'package:app_quanly_giaiui/features/auth/data/staff_api_auth_repository.dart';
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  const ProfileScreen({super.key, this.showAppBar = true});
+
+  final bool showAppBar;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -26,7 +29,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text(AppStrings.profile), elevation: 0),
+      appBar: widget.showAppBar
+          ? AppBar(title: const Text(AppStrings.profile), elevation: 0)
+          : null,
       body: SingleChildScrollView(
         child: Column(
           children: [
@@ -44,12 +49,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
       future: _profileFuture,
       builder: (context, snapshot) {
         final profile = snapshot.data;
+        final roles = profile?.roles ?? const <String>[];
+        final avatarUrl = profile?.avatarUrl;
         final title = snapshot.connectionState == ConnectionState.waiting
             ? 'Đang tải hồ sơ...'
-            : profile?.displayName ?? 'Hồ sơ khách hàng';
+            : profile?.displayName ??
+                  (StaffApiAuthRepository.instance.isSignedIn
+                      ? 'Hồ sơ nhân viên'
+                      : 'Hồ sơ khách hàng');
         final subtitle = profile?.phone ?? profile?.email ?? '';
-        final roleText = profile?.roles.isNotEmpty == true
-            ? profile!.roles.join(' • ')
+        final roleText = roles.isNotEmpty
+            ? roles.join(' • ')
+            : StaffApiAuthRepository.instance.isSignedIn
+            ? 'Nhân viên'
             : 'Khách hàng';
 
         return Container(
@@ -60,10 +72,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
               CircleAvatar(
                 radius: 35,
                 backgroundColor: AppColors.primaryLight,
-                backgroundImage: profile?.avatarUrl == null
+                backgroundImage: avatarUrl == null || avatarUrl.isEmpty
                     ? null
-                    : NetworkImage(profile!.avatarUrl!),
-                child: profile?.avatarUrl == null
+                    : NetworkImage(avatarUrl),
+                child: avatarUrl == null || avatarUrl.isEmpty
                     ? const Icon(
                         Icons.person,
                         size: 40,
@@ -124,6 +136,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildMenuSection(BuildContext context) {
+    final isStaff = StaffApiAuthRepository.instance.isSignedIn;
     return Column(
       children: [
         _buildMenuGroup([
@@ -144,17 +157,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
             title: 'Đổi mật khẩu',
             onTap: () => context.pushNamed(AppRoutes.changePassword),
           ),
-          _MenuItem(
+          if (!isStaff) _MenuItem(
             icon: Icons.location_on_outlined,
             title: AppStrings.addresses,
               onTap: () => context.pushNamed(AppRoutes.addressBook),
           ),
-          _MenuItem(
+          if (!isStaff) _MenuItem(
             icon: Icons.star_outline_rounded,
             title: AppStrings.loyalty,
             onTap: () => context.pushNamed(AppRoutes.loyalty),
           ),
-          _MenuItem(
+          if (!isStaff) _MenuItem(
             icon: Icons.card_giftcard_rounded,
             title: AppStrings.vouchers,
             onTap: () => context.pushNamed(AppRoutes.vouchers),

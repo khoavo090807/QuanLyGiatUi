@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:app_quanly_giaiui/core/theme/app_colors.dart';
 import 'package:app_quanly_giaiui/core/theme/app_typography.dart';
 import 'package:app_quanly_giaiui/core/utils/validator_utils.dart';
 import 'package:app_quanly_giaiui/features/auth/data/auth_repository.dart';
+import 'package:app_quanly_giaiui/features/auth/data/staff_api_auth_repository.dart';
 
 class ChangePasswordScreen extends StatefulWidget {
   const ChangePasswordScreen({super.key});
@@ -58,11 +60,55 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Không thể đổi mật khẩu: $error')),
+        SnackBar(
+          content: Text('Không thể đổi mật khẩu: ${_errorMessage(error)}'),
+        ),
       );
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
+  }
+
+  String? _validateNewPassword(String? value) {
+    if (value == null) return 'Vui lòng nhập mật khẩu mới.';
+    final error = ValidatorUtils.validatePassword(value);
+    if (error != null) return error;
+    if (StaffApiAuthRepository.instance.isSignedIn) {
+      if (value.length < 8) return 'Mật khẩu mới phải có ít nhất 8 ký tự.';
+      final meetsStaffRequirements = RegExp(
+        r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&_-]).+$',
+      ).hasMatch(value);
+      if (!meetsStaffRequirements) {
+        return 'Mật khẩu cần có chữ hoa, chữ thường, số và ký tự đặc biệt.';
+      }
+    }
+    if (value == _currentPasswordController.text) {
+      return 'Mật khẩu mới phải khác mật khẩu hiện tại.';
+    }
+    return null;
+  }
+
+  String _errorMessage(Object error) {
+    if (error is DioException) {
+      final data = error.response?.data;
+      if (data is Map) {
+        final errors = data['errors'];
+        if (errors is Map) {
+          for (final value in errors.values) {
+            if (value is List && value.isNotEmpty) {
+              return value.first.toString();
+            }
+            if (value is String && value.isNotEmpty) return value;
+          }
+        }
+        final message = data['message'];
+        if (message is String && message.isNotEmpty) return message;
+      }
+      if (error.response?.statusCode == 422) {
+        return 'Thông tin chưa hợp lệ. Hãy kiểm tra mật khẩu hiện tại và yêu cầu của mật khẩu mới.';
+      }
+    }
+    return error.toString();
   }
 
   @override
@@ -125,6 +171,10 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                     autofillHints: const [AutofillHints.newPassword],
                     decoration: InputDecoration(
                       labelText: 'Mật khẩu mới',
+                      helperText: StaffApiAuthRepository.instance.isSignedIn
+                          ? 'Tối thiểu 8 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt.'
+                          : null,
+                      helperMaxLines: 3,
                       prefixIcon: const Icon(Icons.lock_outline),
                       suffixIcon: IconButton(
                         tooltip: _obscureNewPassword
@@ -140,14 +190,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                         ),
                       ),
                     ),
-                    validator: (value) {
-                      final error = ValidatorUtils.validatePassword(value);
-                      if (error != null) return error;
-                      if (value == _currentPasswordController.text) {
-                        return 'Mật khẩu mới phải khác mật khẩu hiện tại.';
-                      }
-                      return null;
-                    },
+                    validator: _validateNewPassword,
                   ),
                   const SizedBox(height: 16),
                   TextFormField(

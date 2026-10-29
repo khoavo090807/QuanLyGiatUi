@@ -275,11 +275,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                       'Phí giao đồ · ${_distanceLabel(_deliveryDistanceMeters)}',
                   value: _formatVnd(_deliveryFeeVnd),
                 ),
-              if (_totalDeliveryFeeVnd > 0)
-                _SummaryRow(
-                  label: 'Tổng phí giao nhận',
-                  value: _formatVnd(_totalDeliveryFeeVnd),
-                ),
               _SummaryRow(
                 label: 'Lịch hẹn',
                 value: _formatDateTime(_appointment),
@@ -312,6 +307,11 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                 const Text(
                   'Cửa hàng sẽ báo giá sau khi kiểm nhận đồ.',
                   style: TextStyle(color: AppColors.textSecondary),
+                ),
+              if (_totalDeliveryFeeVnd > 0)
+                _SummaryRow(
+                  label: 'Tổng phí giao nhận',
+                  value: _formatVnd(_totalDeliveryFeeVnd),
                 ),
               if (!_provideLaundryDetails) ...[
                 _SummaryRow(

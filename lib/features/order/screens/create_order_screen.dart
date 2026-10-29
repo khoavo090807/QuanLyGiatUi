@@ -1711,7 +1711,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'Phương thức đã chọn sẽ được dùng khi hóa đơn sẵn sàng; '
+                  'Hình thức thanh toán đã chọn sẽ được dùng khi hóa đơn sẵn sàng; '
                   'số tiền cuối cùng được xác nhận sau khi cửa hàng kiểm nhận.',
                   style: TextStyle(color: AppColors.textSecondary),
                 ),

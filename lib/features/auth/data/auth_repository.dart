@@ -18,11 +18,13 @@ class AuthRepository {
   Future<AuthenticatedProfile?> getCurrentProfile() async {
     final staffAuth = StaffApiAuthRepository.instance;
     if (staffAuth.isSignedIn) {
-      final staff = staffAuth.user ?? const <String, dynamic>{};
+      final staff = await staffAuth.getProfile();
       return AuthenticatedProfile(
         displayName: staff['name'] as String? ?? 'Nhân viên',
         phone: staff['phone'] as String?,
         email: staff['email'] as String?,
+        address: staff['address'] as String?,
+        avatarUrl: staff['avatar_url'] as String?,
         roles: staffAuth.roles,
       );
     }
@@ -239,6 +241,14 @@ class AuthRepository {
     required String currentPassword,
     required String newPassword,
   }) async {
+    final staffAuth = StaffApiAuthRepository.instance;
+    if (staffAuth.isSignedIn) {
+      await staffAuth.changePassword(
+        currentPassword: currentPassword,
+        newPassword: newPassword,
+      );
+      return;
+    }
     final user = _client.auth.currentUser;
     final email = user?.email;
     if (user == null || email == null || email.isEmpty) {

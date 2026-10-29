@@ -106,16 +106,12 @@ class _MainShellState extends State<MainShell> {
         final isStaff = _hasStaffRole(roles);
         _isStaff = isStaff;
         final selectedIndex = isStaff
-            ? (_selectedIndex.clamp(0, 2))
+            ? 0
             : (_selectedIndex.clamp(0, 3));
 
         final screens = isStaff
             ? [
-                const StaffOrderQueueScreen(),
-                NotificationScreen(
-                  unreadNotificationCount: _unreadNotificationCount,
-                ),
-                const ProfileScreen(),
+                StaffOrderQueueScreen(initialTabIndex: widget.initialIndex),
               ]
             : [
                 HomeScreen(
@@ -137,29 +133,7 @@ class _MainShellState extends State<MainShell> {
               ];
 
         final destinations = isStaff
-            ? const [
-                NavigationDestination(
-                  icon: Icon(Icons.fact_check_outlined),
-                  selectedIcon: Icon(
-                    Icons.fact_check,
-                    color: AppColors.primary,
-                  ),
-                  label: 'Đơn hàng',
-                ),
-                NavigationDestination(
-                  icon: Icon(Icons.notifications_outlined),
-                  selectedIcon: Icon(
-                    Icons.notifications,
-                    color: AppColors.primary,
-                  ),
-                  label: AppStrings.notifications,
-                ),
-                NavigationDestination(
-                  icon: Icon(Icons.person_outline),
-                  selectedIcon: Icon(Icons.person, color: AppColors.primary),
-                  label: AppStrings.profile,
-                ),
-              ]
+            ? const <NavigationDestination>[]
             : const [
                 NavigationDestination(
                   icon: Icon(Icons.home_outlined),
@@ -191,28 +165,30 @@ class _MainShellState extends State<MainShell> {
 
         return Scaffold(
           body: IndexedStack(index: selectedIndex, children: screens),
-          bottomNavigationBar: Container(
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.08),
-                  blurRadius: 20,
-                  offset: const Offset(0, -5),
+          bottomNavigationBar: isStaff
+              ? null
+              : Container(
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.08),
+                        blurRadius: 20,
+                        offset: const Offset(0, -5),
+                      ),
+                    ],
+                  ),
+                  child: SafeArea(
+                    child: NavigationBar(
+                      selectedIndex: selectedIndex,
+                      onDestinationSelected: (index) =>
+                          _onDestinationSelected(index, isStaff),
+                      backgroundColor: AppColors.surface,
+                      indicatorColor: AppColors.primaryLight,
+                      destinations: destinations,
+                    ),
+                  ),
                 ),
-              ],
-            ),
-            child: SafeArea(
-              child: NavigationBar(
-                selectedIndex: selectedIndex,
-                onDestinationSelected: (index) =>
-                    _onDestinationSelected(index, isStaff),
-                backgroundColor: AppColors.surface,
-                indicatorColor: AppColors.primaryLight,
-                destinations: destinations,
-              ),
-            ),
-          ),
         );
       },
     );

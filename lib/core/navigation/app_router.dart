@@ -14,6 +14,7 @@ import 'package:app_quanly_giaiui/features/auth/screens/otp_verification_screen.
 import 'package:app_quanly_giaiui/features/auth/screens/forgot_password_screen.dart';
 import 'package:app_quanly_giaiui/features/auth/screens/reset_password_screen.dart';
 import 'package:app_quanly_giaiui/features/main_shell.dart';
+import 'package:app_quanly_giaiui/features/profile/screens/profile_screen.dart';
 import 'package:app_quanly_giaiui/features/services/screens/service_detail_screen.dart';
 import 'package:app_quanly_giaiui/features/services/screens/laundry_catalog_screen.dart';
 import 'package:app_quanly_giaiui/features/services/screens/laundry_item_type_detail_screen.dart';
@@ -25,10 +26,10 @@ import 'package:app_quanly_giaiui/features/tracking/screens/tracking_screen.dart
 import 'package:app_quanly_giaiui/features/payment/screens/payment_screen.dart';
 import 'package:app_quanly_giaiui/features/loyalty/screens/loyalty_screen.dart';
 import 'package:app_quanly_giaiui/features/loyalty/screens/vouchers_screen.dart';
-import 'package:app_quanly_giaiui/features/staff/screens/staff_order_queue_screen.dart';
 import 'package:app_quanly_giaiui/features/staff/screens/staff_booking_inspection_screen.dart';
 import 'package:app_quanly_giaiui/features/profile/screens/address_book_screen.dart';
 import 'package:app_quanly_giaiui/features/profile/screens/edit_profile_screen.dart';
+import 'package:app_quanly_giaiui/features/profile/screens/staff_edit_profile_screen.dart';
 import 'package:app_quanly_giaiui/features/profile/screens/change_password_screen.dart';
 import 'package:app_quanly_giaiui/features/auth/screens/initial_password_setup_screen.dart';
 import 'package:app_quanly_giaiui/features/review/screens/review_screen.dart';
@@ -176,7 +177,9 @@ class AppRouter {
       GoRoute(
         path: AppRoutes.profilePath,
         name: AppRoutes.profile,
-        builder: (context, state) => const MainShell(initialIndex: 3),
+        builder: (context, state) => StaffApiAuthRepository.instance.isSignedIn
+            ? const ProfileScreen()
+            : const MainShell(initialIndex: 3),
       ),
       GoRoute(
         path: AppRoutes.cartPath,
@@ -306,7 +309,9 @@ class AppRouter {
       GoRoute(
         path: AppRoutes.staffQueuePath,
         name: AppRoutes.staffQueue,
-        builder: (context, state) => const StaffOrderQueueScreen(),
+        builder: (context, state) => MainShell(
+          initialIndex: state.extra is int ? state.extra as int : 0,
+        ),
       ),
       GoRoute(
         path: AppRoutes.staffBookingInspectionPath,
@@ -323,7 +328,9 @@ class AppRouter {
       GoRoute(
         path: AppRoutes.editProfilePath,
         name: AppRoutes.editProfile,
-        builder: (context, state) => const EditProfileScreen(),
+        builder: (context, state) => StaffApiAuthRepository.instance.isSignedIn
+            ? const StaffEditProfileScreen()
+            : const EditProfileScreen(),
       ),
     ],
     // Handle error routes
@@ -351,7 +358,10 @@ class AppRouter {
     final staffSignedIn = StaffApiAuthRepository.instance.isSignedIn;
     if (staffSignedIn) {
       if (path == AppRoutes.staffQueuePath ||
-          path.startsWith('/staff/bookings/')) {
+          path.startsWith('/staff/bookings/') ||
+          path == AppRoutes.profilePath ||
+          path == AppRoutes.editProfilePath ||
+          path == AppRoutes.changePasswordPath) {
         return null;
       }
       return AppRoutes.staffQueuePath;
@@ -396,15 +406,13 @@ class AppRouter {
           return AppRoutes.loginPath;
         }
         if (path == AppRoutes.staffQueuePath ||
+            path == AppRoutes.homePath ||
+            path == AppRoutes.myOrdersPath ||
+            path == AppRoutes.notificationsPath ||
+            path == AppRoutes.profilePath ||
             path == AppRoutes.messagesPath ||
             path.startsWith('${AppRoutes.messagesPath}/')) {
           return null;
-        }
-        if (path == AppRoutes.homePath ||
-            path == AppRoutes.myOrdersPath ||
-            path == AppRoutes.notificationsPath ||
-            path == AppRoutes.profilePath) {
-          return AppRoutes.staffQueuePath;
         }
       }
       if (path == AppRoutes.staffQueuePath && !_isStaffAccount(roles)) {
