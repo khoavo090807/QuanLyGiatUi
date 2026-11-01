@@ -564,7 +564,10 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                 width: double.infinity,
                 child: FilledButton(
                   onPressed: () => _startOrder(firstPrice.priceId),
-                  child: const Text('Chọn dịch vụ và đặt lịch'),
+                  child: Text(
+                    'Đặt lịch cho dịch vụ '
+                    '${firstPrice.serviceName[0].toLowerCase()}${firstPrice.serviceName.substring(1)}',
+                  ),
                 ),
               ),
             ),

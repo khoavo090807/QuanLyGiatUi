@@ -436,7 +436,7 @@ class _CartScreenState extends State<CartScreen> {
                                     .toList(growable: false),
                               },
                             ),
-                      child: const Text('Đặt lịch'),
+                      child: const Text('Đặt lịch các dịch vụ đã chọn trong giỏ hàng'),
                     ),
                   ),
                 ],

@@ -54,7 +54,7 @@ class _VouchersScreenState extends State<VouchersScreen> {
                 children: [
                   const Icon(Icons.cloud_off_outlined, size: 48),
                   const SizedBox(height: 12),
-                  const Text('Không tải được danh sách mã giảm giá.'),
+                  const Text('Không tải được danh sách mã khuyến mãi.'),
                   TextButton(onPressed: _retry, child: const Text('Thử lại')),
                 ],
               ),
@@ -120,7 +120,7 @@ class _VouchersScreenState extends State<VouchersScreen> {
                           ),
                           const SizedBox(height: 16),
                           Text(
-                            'Hiện chưa có mã giảm giá khả dụng',
+                            'Hiện chưa có mã khuyến mãi khả dụng',
                             style: AppTypography.bodyText.copyWith(
                               color: AppColors.textSecondary,
                             ),
@@ -180,7 +180,7 @@ class _VouchersScreenState extends State<VouchersScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Mã giảm giá',
+                  'Mã khuyến mãi',
                   style: AppTypography.heading3.copyWith(color: Colors.white),
                 ),
                 const SizedBox(height: 4),
@@ -207,7 +207,7 @@ class _VouchersScreenState extends State<VouchersScreen> {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
       ),
-      child: const Text('Mã giảm giá này không còn hiệu lực.'),
+      child: const Text('Mã khuyến mãi này không còn hiệu lực.'),
     );
   }
 

@@ -87,8 +87,8 @@ class _TrackingScreenState extends State<TrackingScreen> {
       appBar: AppBar(
         title: Text(
           widget.orderId != null
-              ? 'Chi tiết đơn hàng #${widget.orderId}'
-              : 'Chi tiết yêu cầu #${widget.bookingId}',
+              ? 'Chi tiết đơn hàng'
+              : 'Chi tiết yêu cầu',
         ),
         actions: widget.orderId == null
             ? null
@@ -291,7 +291,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
                   title: 'Thanh toán',
                   children: [
                     _SummaryRow(
-                      label: 'Hình thức',
+                      label: 'Phương thức thanh toán',
                       value: details.paymentMethod ?? 'Chưa ghi nhận',
                     ),
                   ],
@@ -303,11 +303,19 @@ class _TrackingScreenState extends State<TrackingScreen> {
                   ),
                 const SizedBox(height: 20),
                 _SummarySection(
-                  title: order.hasLaundryDetails ? 'Tạm tính' : 'Báo giá',
+                  title: widget.orderId != null
+                      ? null
+                      : order.hasLaundryDetails
+                      ? 'Tạm tính'
+                      : 'Báo giá',
                   children: [
                     if (order.hasLaundryDetails && details.subtotalVnd != null)
                       _SummaryRow(
-                        label: 'Tổng tiền đơn hàng theo bảng giá',
+                        label: widget.orderId != null
+                            ? 'Tổng tiền đơn hàng'
+                            : requestedServices.isEmpty
+                            ? 'Tổng tiền các dịch vụ đã chọn'
+                            : 'Tạm tính các dịch vụ đã rõ số lượng',
                         value: _formatVnd(details.subtotalVnd!),
                       )
                     else if (!order.hasLaundryDetails)
@@ -339,16 +347,8 @@ class _TrackingScreenState extends State<TrackingScreen> {
                       ),
                     if (details.pointsDiscountVnd > 0)
                       _SummaryRow(
-                        label: 'Giảm từ điểm',
+                        label: 'Giảm từ điểm tích lũy',
                         value: '-${_formatVnd(details.pointsDiscountVnd)}',
-                      ),
-                    if (details.promotionDiscountVnd != null ||
-                        (details.pointsDiscountVnd > 0 &&
-                            !details.promotionApplied))
-                      _SummaryRow(
-                        label: 'Tổng tiền được giảm',
-                        value:
-                            '-${_formatVnd(details.pointsDiscountVnd + (details.promotionDiscountVnd ?? 0))}',
                       ),
                     _SummaryRow(
                       label: 'Tổng tiền thanh toán',
@@ -463,7 +463,7 @@ class _TimelineEvent extends StatelessWidget {
 class _SummarySection extends StatelessWidget {
   const _SummarySection({required this.title, required this.children});
 
-  final String title;
+  final String? title;
   final List<Widget> children;
 
   @override
@@ -471,8 +471,10 @@ class _SummarySection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: AppTypography.heading3),
-        const SizedBox(height: 10),
+        if (title != null) ...[
+          Text(title!, style: AppTypography.heading3),
+          const SizedBox(height: 10),
+        ],
         ...children,
       ],
     );

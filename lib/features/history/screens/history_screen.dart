@@ -393,7 +393,7 @@ class _OrderCard extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      '#${order.orderNumber}',
+                      order.orderNumber,
                       style: AppTypography.title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,

@@ -255,7 +255,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('Mã giảm giá', style: AppTypography.heading3),
+                            Text('Mã khuyến mãi', style: AppTypography.heading3),
                             Text(
                               '${vouchers.length} ưu đãi trong tài khoản',
                               style: AppTypography.bodySmall.copyWith(
@@ -318,7 +318,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                         const Padding(
                           padding: EdgeInsets.all(24),
                           child: Center(
-                            child: Text('Hiện chưa có mã giảm giá khả dụng.'),
+                            child: Text('Hiện chưa có mã khuyến mãi khả dụng.'),
                           ),
                         ),
                     ],
@@ -350,7 +350,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Mã giảm giá', style: AppTypography.heading3),
+        Text('Mã khuyến mãi', style: AppTypography.heading3),
         const SizedBox(height: 10),
         Container(
           decoration: BoxDecoration(
@@ -394,7 +394,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                selected?.title ?? 'Chọn mã giảm giá',
+                                selected?.title ?? 'Chọn mã khuyến mãi',
                                 style: AppTypography.title,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
@@ -403,7 +403,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                               if (selected == null)
                                 Text(
                                   vouchers.isEmpty
-                                      ? 'Chưa có mã giảm giá'
+                                      ? 'Chưa có mã khuyến mãi khả dụng'
                                       : '${vouchers.length} mã có sẵn · chạm để xem chi tiết',
                                   style: AppTypography.bodySmall.copyWith(
                                     color: AppColors.textSecondary,
@@ -438,11 +438,6 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                             ],
                           ),
                         ),
-                        const SizedBox(width: 4),
-                        const Icon(
-                          Icons.chevron_right,
-                          color: AppColors.textMuted,
-                        ),
                       ],
                     ),
                   ),
@@ -450,7 +445,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
               ),
               if (selected != null)
                 IconButton(
-                  tooltip: 'Bỏ mã giảm giá',
+                  tooltip: 'Bỏ mã khuyến mãi',
                   onPressed: () => setState(() => _promotionController.clear()),
                   icon: const Icon(Icons.close, size: 20),
                 ),
@@ -477,20 +472,24 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       child: Column(
         children: [
           _PriceBreakdownLine(
-            label: 'Tạm tính dịch vụ',
+            label: _unspecifiedPriceIds.isEmpty &&
+                    _cart.isNotEmpty &&
+                    _cart.every((item) => item.measurement > 0)
+                ? 'Tổng tiền các dịch vụ đã chọn'
+                : 'Tạm tính các dịch vụ đã rõ số lượng',
             value: _formatVnd(_cartTotalMinorUnits / 100),
           ),
           if (_hasHomeDeliveryLeg && _deliveryQuote != null) ...[
             const SizedBox(height: 8),
             _PriceBreakdownLine(
-              label: 'Phí giao nhận dự kiến',
+              label: 'Tổng phí giao nhận',
               value: _formatVnd(deliveryFee),
             ),
           ],
           if (voucher != null) ...[
             const SizedBox(height: 8),
             _PriceBreakdownLine(
-              label: 'Mã giảm giá ${voucher.code}',
+              label: 'Giảm từ mã khuyến mãi',
               value: '−${_formatVnd(_promotionDiscount(voucher))}',
               valueColor: AppColors.success,
             ),
@@ -498,7 +497,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
           if (_usePointsForDiscount && pointsDiscount > 0) ...[
             const SizedBox(height: 8),
             _PriceBreakdownLine(
-              label: 'Điểm tích lũy ($pointsToUse điểm)',
+              label: 'Giảm từ điểm tích lũy ',
               value: '−${_formatVnd(pointsDiscount / 100)}',
               valueColor: AppColors.success,
             ),
@@ -1348,7 +1347,28 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Tạo đơn giặt ủi')),
+      appBar: AppBar(
+        toolbarHeight: widget.initialPriceId == null ? null : 76,
+        title: FutureBuilder<_OrderFormData>(
+          future: _formDataFuture,
+          builder: (context, snapshot) {
+            final serviceName = snapshot.data?.prices
+                .where((price) => price.priceId == widget.initialPriceId)
+                .firstOrNull
+                ?.serviceName;
+            if (serviceName == null || serviceName.isEmpty) {
+              return const Text('Đặt lịch giặt ủi');
+            }
+            return Text(
+              'Đặt lịch cho dịch vụ '
+              '${serviceName[0].toLowerCase()}${serviceName.substring(1)}',
+              maxLines: 2,
+              softWrap: true,
+              overflow: TextOverflow.visible,
+            );
+          },
+        ),
+      ),
       body: FutureBuilder<_OrderFormData>(
         future: _formDataFuture,
         builder: (context, snapshot) {
@@ -1521,12 +1541,12 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                     ButtonSegment(
                       value: 'Tại cửa hàng',
                       icon: Icon(Icons.storefront_outlined),
-                      label: Text('Mang đến'),
+                      label: Text('Nhận tại cửa hàng'),
                     ),
                     ButtonSegment(
                       value: 'Tại nhà',
                       icon: Icon(Icons.local_shipping_outlined),
-                      label: Text('Nhận tận nơi'),
+                      label: Text('Nhận tại nhà khách'),
                     ),
                   ],
                   selected: {_pickupMethod},
@@ -1608,12 +1628,12 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                     ButtonSegment(
                       value: 'Tại cửa hàng',
                       icon: Icon(Icons.storefront_outlined),
-                      label: Text('Nhận tại cửa hàng'),
+                      label: Text('Giao tại cửa hàng'),
                     ),
                     ButtonSegment(
                       value: 'Tại nhà',
                       icon: Icon(Icons.local_shipping_outlined),
-                      label: Text('Giao tận nhà'),
+                      label: Text('Giao tại nhà khách'),
                     ),
                   ],
                   selected: {_deliveryMethod},

@@ -209,7 +209,7 @@ class _StaffOrderQueueScreenState extends State<StaffOrderQueueScreen> {
               ),
               _queueTab(
                 queue.completedBookings,
-                'Chưa có Booking nào bạn đã nhận và kiểm kê thành công.',
+                'Chưa có đặt lịch nào bạn đã nhận và kiểm tra thành công.',
               ),
             ],
           ),
@@ -461,7 +461,7 @@ class _StaffOrderCard extends StatelessWidget {
     if (order.isCompletedBooking) {
       actions = const [];
     } else if (isBooking) {
-      actions = const ['Kiểm tra & tạo đơn'];
+      actions = const ['Kiểm tra và tạo đơn'];
     } else {
       actions = nextStatuses
           .where((status) {
@@ -475,9 +475,9 @@ class _StaffOrderCard extends StatelessWidget {
     }
     final String typeDescription;
     if (order.isCompletedBooking) {
-      typeDescription = 'Booking đã tiếp nhận và kiểm kê thành công';
+      typeDescription = 'Đặt lịch đã tiếp nhận và kiểm tra thành công';
     } else if (isBooking) {
-      typeDescription = 'Booking cần kiểm tra và nhận đồ';
+      typeDescription = 'Đặt lịch cần kiểm tra và nhận đồ';
     } else if (order.status == 'Đã hủy') {
       typeDescription = 'Đơn hàng đã hủy';
     } else if (const {'Đã giao', 'Hoàn thành', 'Đã thanh toán'}.contains(
@@ -560,7 +560,7 @@ class _StaffOrderCard extends StatelessWidget {
           if (isBooking && !order.isCompletedBooking && !order.hasLaundryDetails)
             const Padding(
               padding: EdgeInsets.only(top: 8),
-              child: Text('Kiểm kê để báo giá'),
+              child: Text('Kiểm tra để báo giá'),
             ),
           if (actions.isNotEmpty) ...[
             const SizedBox(height: 12),

@@ -70,7 +70,6 @@ class _LoyaltyScreenState extends State<LoyaltyScreen> {
                 const SizedBox(height: 16),
                 _buildBenefit(Icons.percent, 'Tích điểm theo đơn hàng', 'Điểm được cộng khi đơn hàng ở trạng thái "Đã giao".'),
                 _buildBenefit(Icons.local_offer_outlined, 'Sử dụng điểm giảm tiền', 'Bật tính năng này khi đặt đơn để trừ tiền từ điểm tích lũy của bạn.'),
-                _buildBenefit(Icons.card_giftcard, 'Đổi quà tặng', 'Sử dụng điểm tích lũy để đổi quà tặng hấp dẫn.'),
               ],
             ),
           );

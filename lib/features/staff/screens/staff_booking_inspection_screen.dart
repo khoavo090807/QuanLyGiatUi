@@ -212,7 +212,7 @@ class _StaffBookingInspectionScreenState
     if (!_formKey.currentState!.validate() || !_itemsAreComplete()) return;
     if (_estimate == null) {
       _showError(
-        'Hãy tính giá dự kiến sau khi kiểm kê trước khi xác nhận với khách.',
+        'Hãy tính giá dự kiến sau khi kiểm tra trước khi xác nhận với khách.',
       );
       return;
     }
@@ -250,14 +250,14 @@ class _StaffBookingInspectionScreenState
     final reason = await showDialog<String>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Xác nhận khách từ chối báo giá'),
+        title: const Text('Xác nhận khách từ chối đặt lịch'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Booking sẽ bị hủy, không tạo đơn và không thu phí nhận đồ. '
-              'Dữ liệu kiểm kê cùng lý do sẽ được lưu để tra cứu.',
+              'Đặt lịch sẽ bị hủy, không tạo thành đơn hàng và không thu phí nhận đồ. '
+              'Dữ liệu kiểm tra đồ cùng lý do sẽ được lưu để tra cứu.',
             ),
             const SizedBox(height: 16),
             Form(
@@ -293,7 +293,7 @@ class _StaffBookingInspectionScreenState
                   ),
                   onPressed: () => Navigator.pop(dialogContext),
                   child: const Text(
-                    'Quay lại kiểm kê',
+                    'Quay lại kiểm tra',
                     textAlign: TextAlign.center,
                   ),
                 ),
@@ -312,7 +312,7 @@ class _StaffBookingInspectionScreenState
                     Navigator.pop(dialogContext, rejectionReason.trim());
                   },
                   child: const Text(
-                    'Hủy Booking và lưu lý do',
+                    'Hủy đặt lịch và lưu lý do',
                     textAlign: TextAlign.center,
                   ),
                 ),
@@ -333,7 +333,7 @@ class _StaffBookingInspectionScreenState
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Đã hủy Booking và lưu lý do khách từ chối.'),
+          content: Text('Đã hủy đặt lịch và lưu lý do khách từ chối.'),
         ),
       );
       Navigator.of(context).pop(true);
@@ -361,7 +361,7 @@ class _StaffBookingInspectionScreenState
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Đã lưu cập nhật. Khách có thể xem Booking trên ứng dụng.',
+            'Đã lưu lại cập nhật.',
           ),
         ),
       );
@@ -477,7 +477,7 @@ class _StaffBookingInspectionScreenState
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: AppColors.background,
     appBar: AppBar(
-      title: const Text('Kiểm kê & báo giá'),
+      title: const Text('Kiểm tra và báo giá'),
       backgroundColor: AppColors.surface,
       surfaceTintColor: Colors.transparent,
     ),
@@ -548,7 +548,7 @@ class _StaffBookingInspectionScreenState
               const SizedBox(height: 8),
               _rewardChoices(),
               const SizedBox(height: 18),
-              _sectionTitle('GHI CHÚ VÀ GIÁ', Icons.receipt_long_outlined),
+              _sectionTitle('GHI CHÚ', Icons.receipt_long_outlined),
               const SizedBox(height: 8),
               TextFormField(
                 controller: _note,
@@ -556,7 +556,7 @@ class _StaffBookingInspectionScreenState
                 maxLines: 2,
                 onChanged: (_) => setState(_invalidateEstimate),
                 decoration: const InputDecoration(
-                  labelText: 'Ghi chú Booking',
+                  labelText: 'Ghi chú đặt lịch',
                   hintText: 'Thông tin thêm khách cần biết',
                   alignLabelWithHint: true,
                   filled: true,
@@ -587,10 +587,10 @@ class _StaffBookingInspectionScreenState
                       ),
                 label: Text(
                   _estimate == null
-                      ? 'Tính giá để lưu Booking'
+                      ? 'Tính giá trị đơn đặt lịch'
                       : _draftSaved
-                      ? 'Lưu lại cập nhật Booking'
-                      : 'Lưu Booking cho khách xem',
+                      ? 'Lưu lại cập nhật đặt lịch'
+                      : 'Lưu đặt lịch cho khách xem',
                 ),
                 style: FilledButton.styleFrom(
                   minimumSize: const Size.fromHeight(50),
@@ -613,8 +613,8 @@ class _StaffBookingInspectionScreenState
                 ),
                 subtitle: Text(
                   _draftSaved
-                      ? 'Hãy báo kết quả kiểm kê và tổng tiền rồi hỏi khách trực tiếp; khách không cần thao tác trên ứng dụng.'
-                      : 'Lưu thông tin kiểm kê và tính giá trước khi báo khách trực tiếp.',
+                      ? 'Hãy báo kết quả kiểm tra và tổng tiền rồi hỏi khách trực tiếp; khách không cần thao tác trên ứng dụng.'
+                      : 'Lưu thông tin kiểm tra và tính giá trước khi báo khách trực tiếp.',
                 ),
                 controlAffinity: ListTileControlAffinity.leading,
                 shape: RoundedRectangleBorder(
@@ -635,7 +635,7 @@ class _StaffBookingInspectionScreenState
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.cancel_outlined),
-                label: const Text('Khách từ chối — Hủy Booking'),
+                label: const Text('Khách từ chối - Hủy đặt lịch'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: Colors.red,
                   side: const BorderSide(color: Colors.red),
@@ -657,7 +657,7 @@ class _StaffBookingInspectionScreenState
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.check_circle_outline),
-                label: const Text('Khách đồng ý — xác nhận & tạo đơn'),
+                label: const Text('Khách đồng ý - xác nhận và tạo đơn'),
                 style: FilledButton.styleFrom(
                   minimumSize: const Size.fromHeight(52),
                   shape: RoundedRectangleBorder(
@@ -779,8 +779,8 @@ class _StaffBookingInspectionScreenState
         Expanded(
           child: Text(
             _draftSaved
-                ? 'Booking đã lưu. Khách có thể xem thông tin mới trên điện thoại; chỉ tạo đơn sau khi khách đồng ý trực tiếp.'
-                : 'Kiểm tra đồ, tính giá rồi lưu để khách xem Booking cập nhật trước khi xác nhận.',
+                ? 'Đặt lịch đã lưu. Khách có thể xem thông tin mới trên điện thoại; chỉ tạo đơn sau khi khách đồng ý trực tiếp.'
+                : 'Kiểm tra đồ, tính giá rồi lưu để khách xem đặt lịch được cập nhật trước khi xác nhận.',
             style: const TextStyle(height: 1.35),
           ),
         ),
@@ -1263,7 +1263,7 @@ class _StaffBookingInspectionScreenState
               'Giảm từ mã khuyến mãi',
               '-${_money(promotionDiscount)}',
             ),
-            _estimateRow('Giảm từ điểm', '-${_money(pointsDiscount)}'),
+            _estimateRow('Giảm từ điểm tích lũy', '-${_money(pointsDiscount)}'),
             _estimateRow('Tổng tiền được giảm', '-${_money(totalDiscount)}'),
             _estimateRow(
               'Tổng tiền thanh toán',
@@ -1439,14 +1439,14 @@ class _StaffBookingInspectionScreenState
                         children: [
                           Text(
                             selected?['title']?.toString() ??
-                                'Chọn mã giảm giá',
+                                'Chọn mã khuyến mãi',
                             style: AppTypography.title,
                           ),
                           const SizedBox(height: 5),
                           if (selected == null)
                             Text(
                               _vouchers.isEmpty
-                                  ? 'Chưa có mã giảm giá'
+                                  ? 'Chưa có mã khuyến mãi khả dụng'
                                   : '${_vouchers.length} mã có sẵn · chạm để xem chi tiết',
                               style: AppTypography.bodySmall.copyWith(
                                 color: AppColors.textSecondary,
@@ -1483,8 +1483,6 @@ class _StaffBookingInspectionScreenState
                         ],
                       ),
                     ),
-                    const SizedBox(width: 4),
-                    const Icon(Icons.chevron_right, color: AppColors.textMuted),
                   ],
                 ),
               ),
@@ -1492,7 +1490,7 @@ class _StaffBookingInspectionScreenState
           ),
           if (selected != null)
             IconButton(
-              tooltip: 'Bỏ mã giảm giá',
+              tooltip: 'Bỏ mã khuyến mãi',
               onPressed: () => setState(() {
                 _selectedPromotionId = null;
                 _invalidateEstimate();
@@ -1600,7 +1598,7 @@ class _StaffBookingInspectionScreenState
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('Mã giảm giá', style: AppTypography.heading3),
+                            Text('Mã khuyến mãi', style: AppTypography.heading3),
                             Text(
                               '${_vouchers.length} ưu đãi trong tài khoản',
                               style: AppTypography.bodySmall.copyWith(
@@ -1670,7 +1668,7 @@ class _StaffBookingInspectionScreenState
                         const Padding(
                           padding: EdgeInsets.all(24),
                           child: Center(
-                            child: Text('Hiện chưa có mã giảm giá khả dụng.'),
+                            child: Text('Hiện chưa có mã khuyến mãi khả dụng.'),
                           ),
                         ),
                     ],

@@ -24,6 +24,10 @@ class _StaffDeliveryConfirmationScreenState
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
+        scrollable: true,
+        actionsAlignment: MainAxisAlignment.end,
+        actionsOverflowDirection: VerticalDirection.down,
+        actionsOverflowButtonSpacing: 8,
         title: const Text('Xác nhận đã giao đồ'),
         content: const Text('Khách hàng đã nhận đủ đồ giặt?'),
         actions: [

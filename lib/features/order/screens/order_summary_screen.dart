@@ -198,7 +198,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
             Text('Yêu cầu đang chờ tiếp nhận', style: AppTypography.heading2),
             const SizedBox(height: 4),
             Text(
-              'Mã booking ${booking.bookingNumber}',
+              'Mã đặt lịch ${booking.bookingNumber}',
               style: AppTypography.bodyText.copyWith(
                 color: AppColors.textSecondary,
               ),
@@ -296,11 +296,11 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                 _SummaryRow(
                   label: booking == null
                       ? _unspecifiedServices.isEmpty
-                            ? 'Tổng tiền đơn hàng (ước tính)'
-                            : 'Tạm tính các mục đã rõ số lượng'
+                            ? 'Tổng tiền các dịch vụ đã chọn'
+                            : 'Tạm tính các dịch vụ đã rõ số lượng'
                       : _unspecifiedServices.isEmpty
-                      ? 'Tổng tiền đơn hàng theo bảng giá'
-                      : 'Tạm tính các mục đã rõ số lượng',
+                      ? 'Tổng tiền các dịch vụ đã chọn'
+                      : 'Tạm tính các dịch vụ đã rõ số lượng',
                   value: _formatVnd(_estimatedOrderTotalVnd),
                 )
               else
@@ -319,10 +319,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                   value: 'Cửa hàng sẽ báo giá',
                 ),
                 _SummaryRow(
-                  label: 'Tổng tiền được giảm',
-                  value: 'Tính sau khi cửa hàng báo giá',
-                ),
-                _SummaryRow(
                   label: 'Tổng tiền thanh toán',
                   value: 'Cửa hàng sẽ báo giá',
                   emphasize: true,
@@ -332,22 +328,18 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                 if (_promotionCode.isNotEmpty)
                   _SummaryRow(
                     label: 'Giảm từ mã khuyến mãi',
-                    value: _formatVnd(_promotionDiscountEstimateVnd),
+                    value: '-${_formatVnd(_promotionDiscountEstimateVnd)}',
                   ),
                 if (_usePoints) ...[
                   _SummaryRow(
                     label: booking == null
-                        ? 'Giảm ước tính từ điểm'
-                        : 'Giảm từ điểm',
-                    value: _formatVnd(
+                        ? 'Giảm từ điểm tích lũy'
+                        : 'Giảm từ điểm tích lũy',
+                    value: '-${_formatVnd(
                       booking?.pointsDiscountVnd ?? _pointsDiscountEstimateVnd,
-                    ),
+                    )}',
                   ),
                 ],
-                _SummaryRow(
-                  label: 'Tổng tiền được giảm',
-                  value: _formatVnd(_totalDiscountEstimateVnd),
-                ),
                 _SummaryRow(
                   label: 'Tổng tiền thanh toán',
                   value: _formatVnd(_estimatedFinalTotalVnd),

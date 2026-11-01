@@ -128,12 +128,12 @@ class OrderConfirmationInfo extends StatelessWidget {
     final totalDiscount =
         details.pointsDiscountVnd + (details.promotionDiscountVnd ?? 0);
     return _Section(
-      title: order.hasLaundryDetails ? 'Tạm tính' : 'Báo giá',
+      title: order.hasLaundryDetails ? null : 'Báo giá',
       lightText: lightText,
       children: [
         if (order.hasLaundryDetails && details.subtotalVnd != null)
           _Row(
-            label: 'Tổng tiền đơn hàng theo bảng giá',
+            label: 'Tổng tiền đơn hàng',
             value: _formatVnd(details.subtotalVnd!),
             lightText: lightText,
           )
@@ -168,7 +168,7 @@ class OrderConfirmationInfo extends StatelessWidget {
           ),
         if (details.pointsDiscountVnd > 0)
           _Row(
-            label: 'Giảm từ điểm',
+            label: 'Giảm từ điểm tích lũy',
             value: _formatVnd(details.pointsDiscountVnd),
             lightText: lightText,
           ),
@@ -213,7 +213,7 @@ class _Section extends StatelessWidget {
     required this.lightText,
   });
 
-  final String title;
+  final String? title;
   final List<Widget> children;
   final bool lightText;
 
@@ -222,13 +222,15 @@ class _Section extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          title,
-          style: AppTypography.heading3.copyWith(
-            color: lightText ? Colors.white : null,
+        if (title != null) ...[
+          Text(
+            title!,
+            style: AppTypography.heading3.copyWith(
+              color: lightText ? Colors.white : null,
+            ),
           ),
-        ),
-        const SizedBox(height: 8),
+          const SizedBox(height: 8),
+        ],
         ...children,
       ],
     );
