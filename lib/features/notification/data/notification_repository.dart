@@ -49,6 +49,8 @@ class LaundryNotification {
 
   factory LaundryNotification.fromJson(Map<String, dynamic> json) {
     // Handle both lowercase (from view select) and capitalized (from realtime table insert)
+    final type = (json['loaithongbao'] ?? json['LoaiThongBao']) as String?;
+    final sentAt = (json['thoigiangui'] ?? json['ThoiGianGui']) as String;
     return LaundryNotification(
       id: (json['thongbaoid'] ?? json['ThongBaoID'] as num).toInt(),
       title: (json['tieude'] ?? json['TieuDe']) as String,
@@ -57,14 +59,15 @@ class LaundryNotification {
           (json['noidung'] ?? json['NoiDung']) as String,
         ),
       ),
-      sentAt: parseDatabaseTimestamp(
-        (json['thoigiangui'] ?? json['ThoiGianGui']) as String,
-      ),
+      // Manual web notifications have no type and use Laravel's local timezone.
+      sentAt: type == null || type.isEmpty
+          ? DateTime.parse(sentAt).toLocal()
+          : parseDatabaseTimestamp(sentAt),
       isRead: (json['dadoc'] ?? json['DaDoc']) as bool,
       orderId: ((json['donhangid'] ?? json['DonHangID']) as num?)?.toInt(),
       messageId: ((json['tinnhanid'] ?? json['TinNhanID']) as num?)?.toInt(),
       bookingId: ((json['bookingid'] ?? json['BookingID']) as num?)?.toInt(),
-      type: (json['loaithongbao'] ?? json['LoaiThongBao']) as String?,
+      type: type,
     );
   }
 }
@@ -88,11 +91,9 @@ class NotificationRepository {
         .order('thongbaoid', ascending: false)
         .range(page * pageSize, page * pageSize + pageSize - 1)
         .count(CountOption.exact);
-    final rows = response.data as List<dynamic>;
+    final rows = _parseRows(response.data as List<dynamic>);
     return NotificationPage(
-      notifications: rows
-          .map((row) => LaundryNotification.fromJson(row as Map<String, dynamic>))
-          .toList(growable: false),
+      notifications: rows,
       totalCount: response.count,
     );
   }
@@ -105,9 +106,7 @@ class NotificationRepository {
         )
         .order('thoigiangui', ascending: false);
 
-    return (rows as List<dynamic>)
-        .map((row) => LaundryNotification.fromJson(row as Map<String, dynamic>))
-        .toList(growable: false);
+    return _parseRows(rows as List<dynamic>);
   }
 
   Future<List<LaundryNotification>> getRecentNotifications({int limit = 20}) async {
@@ -119,9 +118,18 @@ class NotificationRepository {
         .order('thoigiangui', ascending: false)
         .limit(limit);
 
-    return (rows as List<dynamic>)
+    return _parseRows(rows as List<dynamic>);
+  }
+
+  List<LaundryNotification> _parseRows(List<dynamic> rows) {
+    final notifications = rows
         .map((row) => LaundryNotification.fromJson(row as Map<String, dynamic>))
-        .toList(growable: false);
+        .toList();
+    notifications.sort((a, b) {
+      final byTime = b.sentAt.compareTo(a.sentAt);
+      return byTime != 0 ? byTime : b.id.compareTo(a.id);
+    });
+    return notifications;
   }
 
   Future<int> getUnreadCount() async {

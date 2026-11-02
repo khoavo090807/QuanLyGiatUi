@@ -86,7 +86,11 @@ class _NotificationScreenState extends State<NotificationScreen> {
       );
       if (!mounted || requestVersion != _requestVersion) return;
       setState(() {
-        _notifications = [..._notifications, ...page.notifications];
+        _notifications = [..._notifications, ...page.notifications]
+          ..sort((a, b) {
+            final byTime = b.sentAt.compareTo(a.sentAt);
+            return byTime != 0 ? byTime : b.id.compareTo(a.id);
+          });
         _totalNotificationCount = page.totalCount;
         _loadedNotificationIds = _notifications
             .map((notification) => notification.id)
@@ -265,6 +269,12 @@ class _NotificationScreenState extends State<NotificationScreen> {
       } catch (_) {
         if (mounted) context.pushNamed(AppRoutes.myOrders);
       }
+    } else if (mounted) {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => _NotificationDetailScreen(notification: notification),
+        ),
+      );
     }
   }
 
@@ -500,6 +510,39 @@ class _NotificationScreenState extends State<NotificationScreen> {
     if (normalized.contains('giao')) return Icons.local_shipping_outlined;
     if (normalized.contains('thanh')) return Icons.payments_outlined;
     return Icons.local_laundry_service_outlined;
+  }
+}
+
+class _NotificationDetailScreen extends StatelessWidget {
+  const _NotificationDetailScreen({required this.notification});
+
+  final LaundryNotification notification;
+
+  @override
+  Widget build(BuildContext context) {
+    final sentAt = notification.sentAt.toLocal();
+    final formattedSentAt =
+        '${sentAt.day.toString().padLeft(2, '0')}/'
+        '${sentAt.month.toString().padLeft(2, '0')}/${sentAt.year} '
+        '${sentAt.hour.toString().padLeft(2, '0')}:'
+        '${sentAt.minute.toString().padLeft(2, '0')}';
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Chi tiết thông báo')),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          Text(notification.title, style: AppTypography.title),
+          const SizedBox(height: 12),
+          Text(notification.message),
+          const SizedBox(height: 20),
+          Text(
+            formattedSentAt,
+            style: AppTypography.bodySmall,
+          ),
+        ],
+      ),
+    );
   }
 }
 
