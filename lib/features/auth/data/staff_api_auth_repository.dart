@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
@@ -105,10 +104,7 @@ class StaffApiAuthRepository {
   }) async {
     final response = await dio.put<Map<String, dynamic>>(
       'staff/profile',
-      data: {
-        'name': name.trim(),
-        'phone': phone.trim(),
-      },
+      data: {'name': name.trim(), 'phone': phone.trim()},
       options: authorizedOptions(),
     );
     final data = response.data?['data'];

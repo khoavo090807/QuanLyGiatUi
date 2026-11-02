@@ -141,8 +141,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     if (mounted) setState(() {});
   }
 
-  bool get _provideLaundryDetails =>
-      _cart.any((item) => item.measurement > 0);
+  bool get _provideLaundryDetails => _cart.any((item) => item.measurement > 0);
 
   int get _cartTotalMinorUnits {
     var total = 0;
@@ -255,7 +254,10 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('Mã khuyến mãi', style: AppTypography.heading3),
+                            Text(
+                              'Mã khuyến mãi',
+                              style: AppTypography.heading3,
+                            ),
                             Text(
                               '${vouchers.length} ưu đãi trong tài khoản',
                               style: AppTypography.bodySmall.copyWith(
@@ -458,7 +460,6 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
 
   Widget _discountTotalCard(List<LoyaltyVoucher> vouchers) {
     final voucher = _selectedEligibleVoucher(vouchers);
-    final pointsToUse = _pointsToUseAfterPromotion(voucher);
     final pointsDiscount = _pointsDiscountAfterPromotion(voucher);
     final deliveryFee = _deliveryQuote?.totalFeeVnd ?? 0;
     final total = _finalTotal(vouchers) / 100;
@@ -472,7 +473,8 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       child: Column(
         children: [
           _PriceBreakdownLine(
-            label: _unspecifiedPriceIds.isEmpty &&
+            label:
+                _unspecifiedPriceIds.isEmpty &&
                     _cart.isNotEmpty &&
                     _cart.every((item) => item.measurement > 0)
                 ? 'Tổng tiền các dịch vụ đã chọn'
@@ -1052,7 +1054,8 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                                                   BorderRadius.circular(11),
                                             ),
                                             child: const Icon(
-                                              Icons.local_laundry_service_outlined,
+                                              Icons
+                                                  .local_laundry_service_outlined,
                                               color: AppColors.primary,
                                               size: 21,
                                             ),
@@ -1097,10 +1100,12 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                                                 ? null
                                                 : () => setSheetState(() {
                                                     if (quantity <= 1) {
-                                                      selections[price.priceId] =
+                                                      selections[price
+                                                              .priceId] =
                                                           null;
                                                     } else {
-                                                      selections[price.priceId] =
+                                                      selections[price
+                                                              .priceId] =
                                                           quantity - 1;
                                                     }
                                                   }),
@@ -1474,62 +1479,60 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                     ),
                   ),
                 if (_cart.isNotEmpty || _unspecifiedPriceIds.isNotEmpty) ...[
-                    const SizedBox(height: 24),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            'Các mục đã chọn (${_cart.length + _unspecifiedPriceIds.length})',
-                            style: AppTypography.heading3,
-                          ),
+                  const SizedBox(height: 24),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Các mục đã chọn (${_cart.length + _unspecifiedPriceIds.length})',
+                          style: AppTypography.heading3,
                         ),
-                        TextButton(
-                          onPressed: _clearCart,
-                          child: const Text('Xóa tất cả'),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    ..._cart.indexed.map(
-                      (entry) => _CartItemTile(
-                        item: entry.$2,
-                        onRemove: () => _removeFromCart(entry.$1),
                       ),
+                      TextButton(
+                        onPressed: _clearCart,
+                        child: const Text('Xóa tất cả'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  ..._cart.indexed.map(
+                    (entry) => _CartItemTile(
+                      item: entry.$2,
+                      onRemove: () => _removeFromCart(entry.$1),
                     ),
-                    ..._unspecifiedPriceIds.map(
-                      (priceId) {
-                        final price = allPrices
-                            .where((item) => item.priceId == priceId)
-                            .firstOrNull;
-                        if (price == null) return const SizedBox.shrink();
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          child: ListTile(
-                            leading: const Icon(
-                              Icons.local_laundry_service_outlined,
-                            ),
-                            title: Text(
-                              '${price.serviceName} · ${price.itemTypeName}',
-                            ),
-                            subtitle: Text(
-                              '0 ${price.unitSymbol} · '
-                              '${FormatterUtils.formatVnd(price.unitPriceVnd)}/${price.unitSymbol}',
-                            ),
-                            trailing: IconButton(
-                              tooltip: 'Bỏ dịch vụ',
-                              onPressed: () => setState(
-                                () => _unspecifiedPriceIds.remove(priceId),
-                              ),
-                              icon: const Icon(Icons.delete_outline),
-                            ),
+                  ),
+                  ..._unspecifiedPriceIds.map((priceId) {
+                    final price = allPrices
+                        .where((item) => item.priceId == priceId)
+                        .firstOrNull;
+                    if (price == null) return const SizedBox.shrink();
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: ListTile(
+                        leading: const Icon(
+                          Icons.local_laundry_service_outlined,
+                        ),
+                        title: Text(
+                          '${price.serviceName} · ${price.itemTypeName}',
+                        ),
+                        subtitle: Text(
+                          '0 ${price.unitSymbol} · '
+                          '${FormatterUtils.formatVnd(price.unitPriceVnd)}/${price.unitSymbol}',
+                        ),
+                        trailing: IconButton(
+                          tooltip: 'Bỏ dịch vụ',
+                          onPressed: () => setState(
+                            () => _unspecifiedPriceIds.remove(priceId),
                           ),
-                        );
-                      },
-                    ),
-                    if (_cart.isNotEmpty)
-                      _EstimateRow(totalMinorUnits: _cartTotalMinorUnits),
-                    const SizedBox(height: 16),
-                  ],
+                          icon: const Icon(Icons.delete_outline),
+                        ),
+                      ),
+                    );
+                  }),
+                  if (_cart.isNotEmpty)
+                    _EstimateRow(totalMinorUnits: _cartTotalMinorUnits),
+                  const SizedBox(height: 16),
+                ],
                 const SizedBox(height: 28),
                 Text(
                   'Hình thức nhân viên nhận đồ',

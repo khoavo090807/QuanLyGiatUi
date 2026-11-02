@@ -1,11 +1,9 @@
-import 'dart:async';
-
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:intl/intl.dart';
 import 'package:app_quanly_giaiui/core/theme/app_colors.dart';
 import 'package:app_quanly_giaiui/core/theme/app_typography.dart';
-import 'package:app_quanly_giaiui/features/profile/data/address_suggestion_service.dart';
 import 'package:app_quanly_giaiui/features/staff/data/staff_booking_repository.dart';
 
 class StaffBookingInspectionScreen extends StatefulWidget {
@@ -22,10 +20,10 @@ class _StaffBookingInspectionScreenState
     extends State<StaffBookingInspectionScreen> {
   final _repository = StaffBookingRepository();
   final _formKey = GlobalKey<FormState>();
+  final _formScrollController = ScrollController();
   final _receiveAddress = TextEditingController();
   final _returnAddress = TextEditingController();
   final _note = TextEditingController();
-  final _addressSuggestions = AddressSuggestionService();
   late Future<Map<String, dynamic>> _bookingFuture;
   Map<String, dynamic>? _booking;
   List<Map<String, dynamic>> _prices = const [];
@@ -48,11 +46,6 @@ class _StaffBookingInspectionScreenState
   bool _isSubmitting = false;
   bool _isCancelling = false;
   bool _draftSaved = false;
-  bool _returnAddressVerified = false;
-  bool _isSuggestingAddress = false;
-  Timer? _addressDebounce;
-  List<String> _returnAddressOptions = const [];
-  int _addressSearchGeneration = 0;
 
   @override
   void initState() {
@@ -70,7 +63,6 @@ class _StaffBookingInspectionScreenState
     _returnMethod = booking['return_method']?.toString() ?? 'Tại cửa hàng';
     _receiveAddress.text = booking['receive_address']?.toString() ?? '';
     _returnAddress.text = booking['return_address']?.toString() ?? '';
-    _returnAddressVerified = _returnAddress.text.trim().isNotEmpty;
     _note.text = booking['note']?.toString() ?? '';
     _appointmentDate =
         booking['appointment_date']?.toString() ??
@@ -144,10 +136,10 @@ class _StaffBookingInspectionScreenState
 
   @override
   void dispose() {
-    _addressDebounce?.cancel();
     _receiveAddress.dispose();
     _returnAddress.dispose();
     _note.dispose();
+    _formScrollController.dispose();
     for (final line in _lines) {
       line.dispose();
     }
@@ -191,7 +183,7 @@ class _StaffBookingInspectionScreenState
   }
 
   Future<void> _calculateEstimate() async {
-    if (!_formKey.currentState!.validate() || !_itemsAreComplete()) return;
+    if (!await _validateInspectionForm()) return;
     setState(() => _isEstimating = true);
     try {
       final estimate = await _repository.estimate(widget.bookingId, _payload());
@@ -202,14 +194,75 @@ class _StaffBookingInspectionScreenState
         });
       }
     } catch (error) {
-      _showError(error);
+      await _revealValidationError(error);
+      if (mounted) _showError(error);
     } finally {
       if (mounted) setState(() => _isEstimating = false);
     }
   }
 
+  Future<void> _revealValidationError(Object error) async {
+    if (error is! DioException || error.response?.data is! Map) return;
+    final errors = (error.response!.data as Map)['errors'];
+    if (errors is! Map) return;
+
+    final targets =
+        <
+          ({
+            GlobalKey target,
+            _InspectionLine line,
+            String field,
+            String message,
+          })
+        >[];
+    for (final key in errors.keys) {
+      final match = RegExp(r'^items\.(\d+)\.([^.]+)').firstMatch('$key');
+      if (match == null) continue;
+      final index = int.tryParse(match.group(1)!);
+      if (index == null || index >= _lines.length) continue;
+
+      final line = _lines[index];
+      final field = match.group(2)!;
+      final target = switch (field) {
+        'DichVuID' => line.serviceTarget,
+        'LoaiDoGiatID' => line.garmentTarget,
+        'DonViTinhID' => line.unitTarget,
+        'SoLuong' => line.quantityTarget,
+        'KhoiLuong' => line.weightTarget,
+        'TinhTrangTruocKhiGiat' => line.conditionTarget,
+        _ => null,
+      };
+      if (target == null) continue;
+      final value = errors[key];
+      final message = value is List
+          ? value.firstOrNull?.toString()
+          : value?.toString();
+      if (message?.isNotEmpty != true) continue;
+      targets.add((
+        target: target,
+        line: line,
+        field: field,
+        message: message!,
+      ));
+    }
+
+    if (targets.isEmpty) return;
+    setState(() {
+      for (final target in targets) {
+        target.line.validationErrors[target.field] = target.message;
+      }
+    });
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
+
+    final targetContext = targets.first.target.currentContext;
+    if (targetContext != null && targetContext.mounted) {
+      await _scrollToContext(targetContext);
+    }
+  }
+
   Future<void> _confirm() async {
-    if (!_formKey.currentState!.validate() || !_itemsAreComplete()) return;
+    if (!await _validateInspectionForm()) return;
     if (_estimate == null) {
       _showError(
         'Hãy tính giá dự kiến sau khi kiểm tra trước khi xác nhận với khách.',
@@ -345,7 +398,7 @@ class _StaffBookingInspectionScreenState
   }
 
   Future<void> _saveDraft() async {
-    if (!_formKey.currentState!.validate() || !_itemsAreComplete()) return;
+    if (!await _validateInspectionForm()) return;
     if (_estimate == null) {
       _showError('Hãy tính giá dự kiến trước khi lưu Booking cho khách xem.');
       return;
@@ -358,13 +411,9 @@ class _StaffBookingInspectionScreenState
         _draftSaved = true;
         _customerAgreed = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Đã lưu lại cập nhật.',
-          ),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Đã lưu lại cập nhật.')));
     } catch (error) {
       _showError(error);
     } finally {
@@ -372,16 +421,38 @@ class _StaffBookingInspectionScreenState
     }
   }
 
-  bool _itemsAreComplete() =>
-      _lines.isNotEmpty &&
-      _lines.every((line) {
-        final price = line.selectedPrice(_prices);
-        if (price == null || line.condition.text.trim().isEmpty) return false;
-        if (price['is_weight'] == true) {
-          return line.weight != null && line.weight! > 0;
-        }
-        return line.quantity != null && line.quantity! >= 1;
-      });
+  Future<bool> _validateInspectionForm() async {
+    final form = _formKey.currentState;
+    if (form == null) return false;
+    final invalidFields = form.validateGranularly();
+    if (invalidFields.isEmpty) return true;
+
+    await _scrollToContext(invalidFields.first.context);
+    return false;
+  }
+
+  Future<void> _scrollToContext(BuildContext context) async {
+    final controller = _formScrollController;
+    if (!controller.hasClients) return;
+
+    final renderObject = context.findRenderObject();
+    final viewport = RenderAbstractViewport.maybeOf(renderObject);
+    if (renderObject == null || !renderObject.attached || viewport == null) {
+      return;
+    }
+
+    final offset = viewport.getOffsetToReveal(renderObject, 0.2).offset;
+    await controller.animateTo(
+      offset
+          .clamp(
+            controller.position.minScrollExtent,
+            controller.position.maxScrollExtent,
+          )
+          .toDouble(),
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
+  }
 
   void _invalidateEstimate() {
     _estimate = null;
@@ -403,49 +474,6 @@ class _StaffBookingInspectionScreenState
               'Không thể kết nối máy chủ. Kiểm tra STAFF_API_BASE_URL rồi thử lại.'
         : error.toString();
     return message;
-  }
-
-  void _searchReturnAddress(String value) {
-    _addressDebounce?.cancel();
-    final query = value.trim();
-    final generation = ++_addressSearchGeneration;
-    if (query.length < 5) {
-      setState(() {
-        _returnAddressOptions = const [];
-        _isSuggestingAddress = false;
-      });
-      return;
-    }
-    setState(() => _isSuggestingAddress = true);
-    _addressDebounce = Timer(const Duration(milliseconds: 700), () async {
-      try {
-        final suggestions = await _addressSuggestions.suggest(query);
-        if (!mounted || generation != _addressSearchGeneration) return;
-        setState(() {
-          _returnAddressOptions = suggestions;
-          _isSuggestingAddress = false;
-        });
-      } catch (_) {
-        if (!mounted || generation != _addressSearchGeneration) return;
-        setState(() {
-          _returnAddressOptions = const [];
-          _isSuggestingAddress = false;
-        });
-      }
-    });
-  }
-
-  void _selectReturnAddress(String address) {
-    _addressSearchGeneration++;
-    _addressDebounce?.cancel();
-    _returnAddress
-      ..text = address
-      ..selection = TextSelection.collapsed(offset: address.length);
-    setState(() {
-      _returnAddressVerified = true;
-      _returnAddressOptions = const [];
-      _invalidateEstimate();
-    });
   }
 
   List<Map<String, dynamic>> _serviceOptions(int? categoryId) => _services
@@ -512,9 +540,12 @@ class _StaffBookingInspectionScreenState
         }
         return Form(
           key: _formKey,
-          child: ListView(
+          child: SingleChildScrollView(
+            controller: _formScrollController,
             padding: const EdgeInsets.fromLTRB(14, 14, 14, 28),
-            children: [
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
               _customerCard(_booking!),
               const SizedBox(height: 18),
               _sectionTitle(
@@ -665,7 +696,8 @@ class _StaffBookingInspectionScreenState
                   ),
                 ),
               ),
-            ],
+              ],
+            ),
           ),
         );
       },
@@ -821,22 +853,17 @@ class _StaffBookingInspectionScreenState
             _appointmentTime.isEmpty ? 'Chưa chọn giờ' : _appointmentTime,
           ),
           const Divider(height: 24),
-          DropdownButtonFormField<String>(
-            initialValue: _returnMethod,
-            decoration: const InputDecoration(labelText: 'Hình thức giao đồ'),
-            items: _methods
-                .map(
-                  (value) => DropdownMenuItem(value: value, child: Text(value)),
-                )
-                .toList(),
-            onChanged: (value) => setState(() {
-              _returnMethod = value ?? _returnMethod;
-              _invalidateEstimate();
-            }),
+          _infoLine(
+            Icons.storefront_outlined,
+            'Hình thức giao đồ',
+            _returnMethod,
           ),
           if (_returnMethod == 'Tại nhà') ...[
-            const SizedBox(height: 12),
-            _deliveryAddressField(),
+            _infoLine(
+              Icons.location_on_outlined,
+              'Địa chỉ giao đồ',
+              _returnAddress.text,
+            ),
           ],
           _infoLine(
             Icons.payments_outlined,
@@ -881,67 +908,6 @@ class _StaffBookingInspectionScreenState
         ),
       ],
     ),
-  );
-
-  Widget _deliveryAddressField() => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      TextFormField(
-        controller: _returnAddress,
-        maxLines: 2,
-        maxLength: 255,
-        textInputAction: TextInputAction.done,
-        onChanged: (value) {
-          setState(() {
-            _returnAddressVerified = false;
-            _invalidateEstimate();
-          });
-          _searchReturnAddress(value);
-        },
-        validator: (value) {
-          if (_returnMethod != 'Tại nhà') return null;
-          if (value?.trim().isNotEmpty != true) {
-            return 'Nhập địa chỉ giao đồ.';
-          }
-          return _returnAddressVerified
-              ? null
-              : 'Chọn địa chỉ giao đồ từ danh sách gợi ý.';
-        },
-        decoration: const InputDecoration(
-          labelText: 'Địa chỉ giao đồ',
-          hintText: 'Nhập địa chỉ để xem gợi ý',
-          prefixIcon: Icon(Icons.location_on_outlined),
-        ),
-      ),
-      if (_isSuggestingAddress)
-        const LinearProgressIndicator(minHeight: 2)
-      else if (_returnAddressOptions.isNotEmpty)
-        Card(
-          margin: EdgeInsets.zero,
-          child: Column(
-            children: _returnAddressOptions
-                .map(
-                  (address) => ListTile(
-                    dense: true,
-                    leading: const Icon(Icons.location_on_outlined),
-                    title: Text(address),
-                    onTap: () => _selectReturnAddress(address),
-                  ),
-                )
-                .toList(growable: false),
-          ),
-        )
-      else if (_returnAddress.text.trim().length >= 5 &&
-          !_returnAddressVerified)
-        const Padding(
-          padding: EdgeInsets.only(top: 6),
-          child: Text(
-            'Chọn địa chỉ đề xuất để xác nhận địa chỉ giao đồ.',
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
-          ),
-        ),
-      const SizedBox(height: 12),
-    ],
   );
 
   Widget _lineCard(int index, _InspectionLine line) {
@@ -999,74 +965,113 @@ class _StaffBookingInspectionScreenState
               ],
             ),
             const SizedBox(height: 12),
-            DropdownButtonFormField<int>(
-              key: ValueKey('category-$index-$categoryId'),
-              initialValue: categoryId,
-              decoration: const InputDecoration(labelText: 'Danh mục dịch vụ'),
-              items: _categories
-                  .map(
-                    (row) => DropdownMenuItem<int>(
-                      value: _asInt(row['id'])!,
-                      child: Text(row['name'].toString()),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (value) => setState(() {
-                line.categoryId = value;
-                line.serviceId = null;
-                line.garmentId = null;
-                line.unitId = null;
-                _invalidateEstimate();
-              }),
-            ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<int>(
-              key: ValueKey('service-$index-$categoryId-${line.serviceId}'),
-              initialValue:
-                  serviceOptions.any((row) => row['id'] == line.serviceId)
-                  ? line.serviceId
-                  : null,
-              decoration: const InputDecoration(labelText: 'Dịch vụ'),
-              items: serviceOptions
-                  .map(
-                    (row) => DropdownMenuItem<int>(
-                      value: _asInt(row['id'])!,
-                      child: Text(row['name'].toString()),
-                    ),
-                  )
-                  .toList(),
-              onChanged: categoryId == null
-                  ? null
-                  : (value) => setState(() {
-                      line.categoryId = categoryId;
-                      line.serviceId = value;
-                      line.garmentId = null;
-                      line.unitId = null;
-                      _invalidateEstimate();
-                    }),
-            ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<int>(
-              key: ValueKey(
-                'garment-$index-${line.serviceId}-${line.garmentId}',
+            KeyedSubtree(
+              key: line.categoryTarget,
+              child: DropdownButtonFormField<int>(
+                key: ValueKey('category-$index-$categoryId'),
+                initialValue: categoryId,
+                decoration: const InputDecoration(
+                  labelText: 'Danh mục dịch vụ',
+                ),
+                validator: (value) =>
+                    value == null ? 'Chọn danh mục dịch vụ.' : null,
+                items: _categories
+                    .map(
+                      (row) => DropdownMenuItem<int>(
+                        value: _asInt(row['id'])!,
+                        child: Text(row['name'].toString()),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) => setState(() {
+                  line.validationErrors.clear();
+                  line.categoryId = value;
+                  line.serviceId = null;
+                  line.garmentId = null;
+                  line.unitId = null;
+                  _invalidateEstimate();
+                }),
               ),
-              initialValue: selectedGarmentHasPrice ? line.garmentId : null,
-              decoration: const InputDecoration(labelText: 'Loại đồ giặt'),
-              items: garmentOptions
-                  .map(
-                    (row) => DropdownMenuItem<int>(
-                      value: _asInt(row['id'])!,
-                      child: Text(row['name'].toString()),
-                    ),
-                  )
-                  .toList(),
-              onChanged: line.serviceId == null || garmentOptions.isEmpty
-                  ? null
-                  : (value) => setState(() {
-                      line.garmentId = value;
-                      line.unitId = null;
-                      _invalidateEstimate();
-                    }),
+            ),
+            const SizedBox(height: 12),
+            KeyedSubtree(
+              key: line.serviceTarget,
+              child: DropdownButtonFormField<int>(
+                key: ValueKey('service-$index-$categoryId-${line.serviceId}'),
+                forceErrorText: line.validationErrors['DichVuID'],
+                initialValue:
+                    serviceOptions.any((row) => row['id'] == line.serviceId)
+                    ? line.serviceId
+                    : null,
+                decoration: const InputDecoration(labelText: 'Dịch vụ'),
+                validator: (value) => categoryId != null && value == null
+                    ? 'Chọn dịch vụ.'
+                    : null,
+                items: serviceOptions
+                    .map(
+                      (row) => DropdownMenuItem<int>(
+                        value: _asInt(row['id'])!,
+                        child: Text(row['name'].toString()),
+                      ),
+                    )
+                    .toList(),
+                onChanged: categoryId == null
+                    ? null
+                    : (value) => setState(() {
+                        line.validationErrors.removeWhere(
+                          (field, _) => const {
+                            'DichVuID',
+                            'LoaiDoGiatID',
+                            'DonViTinhID',
+                            'SoLuong',
+                            'KhoiLuong',
+                          }.contains(field),
+                        );
+                        line.categoryId = categoryId;
+                        line.serviceId = value;
+                        line.garmentId = null;
+                        line.unitId = null;
+                        _invalidateEstimate();
+                      }),
+              ),
+            ),
+            const SizedBox(height: 12),
+            KeyedSubtree(
+              key: line.garmentTarget,
+              child: DropdownButtonFormField<int>(
+                key: ValueKey(
+                  'garment-$index-${line.serviceId}-${line.garmentId}',
+                ),
+                forceErrorText: line.validationErrors['LoaiDoGiatID'],
+                initialValue: selectedGarmentHasPrice ? line.garmentId : null,
+                decoration: const InputDecoration(labelText: 'Loại đồ giặt'),
+                validator: (value) => line.serviceId != null && value == null
+                    ? 'Chọn loại đồ giặt.'
+                    : null,
+                items: garmentOptions
+                    .map(
+                      (row) => DropdownMenuItem<int>(
+                        value: _asInt(row['id'])!,
+                        child: Text(row['name'].toString()),
+                      ),
+                    )
+                    .toList(),
+                onChanged: line.serviceId == null || garmentOptions.isEmpty
+                    ? null
+                    : (value) => setState(() {
+                        line.validationErrors.removeWhere(
+                          (field, _) => const {
+                            'LoaiDoGiatID',
+                            'DonViTinhID',
+                            'SoLuong',
+                            'KhoiLuong',
+                          }.contains(field),
+                        );
+                        line.garmentId = value;
+                        line.unitId = null;
+                        _invalidateEstimate();
+                      }),
+              ),
             ),
             if (line.serviceId != null &&
                 (garmentOptions.isEmpty ||
@@ -1084,83 +1089,117 @@ class _StaffBookingInspectionScreenState
                 ),
               ),
             const SizedBox(height: 12),
-            DropdownButtonFormField<int>(
-              key: ValueKey(
-                'unit-$index-${line.serviceId}-${line.garmentId}-${line.unitId}',
+            KeyedSubtree(
+              key: line.unitTarget,
+              child: DropdownButtonFormField<int>(
+                key: ValueKey(
+                  'unit-$index-${line.serviceId}-${line.garmentId}-${line.unitId}',
+                ),
+                forceErrorText: line.validationErrors['DonViTinhID'],
+                initialValue:
+                    priceOptions.any((row) => row['unit_id'] == line.unitId)
+                    ? line.unitId
+                    : null,
+                decoration: const InputDecoration(labelText: 'Đơn vị tính'),
+                validator: (value) =>
+                    line.serviceId != null &&
+                        line.garmentId != null &&
+                        value == null
+                    ? 'Chọn đơn vị tính.'
+                    : null,
+                items: priceOptions
+                    .map(
+                      (row) => DropdownMenuItem<int>(
+                        value: _asInt(row['unit_id'])!,
+                        child: Text(_priceLabel(row)),
+                      ),
+                    )
+                    .toList(),
+                onChanged: priceOptions.isEmpty
+                    ? null
+                    : (value) => setState(() {
+                        line.validationErrors.removeWhere(
+                          (field, _) => const {
+                            'DonViTinhID',
+                            'SoLuong',
+                            'KhoiLuong',
+                          }.contains(field),
+                        );
+                        line.unitId = value;
+                        line.quantity = null;
+                        line.weight = null;
+                        _invalidateEstimate();
+                      }),
               ),
-              initialValue:
-                  priceOptions.any((row) => row['unit_id'] == line.unitId)
-                  ? line.unitId
-                  : null,
-              decoration: const InputDecoration(labelText: 'Đơn vị tính'),
-              items: priceOptions
-                  .map(
-                    (row) => DropdownMenuItem<int>(
-                      value: _asInt(row['unit_id'])!,
-                      child: Text(_priceLabel(row)),
-                    ),
-                  )
-                  .toList(),
-              onChanged: priceOptions.isEmpty
-                  ? null
-                  : (value) => setState(() {
-                      line.unitId = value;
-                      line.quantity = null;
-                      line.weight = null;
-                      _invalidateEstimate();
-                    }),
             ),
             const SizedBox(height: 12),
             if (selectedPrice != null && selectedPrice['is_weight'] == true)
-              TextFormField(
-                key: ValueKey('weight-$index-${line.unitId}'),
-                initialValue: line.weight?.toString() ?? '',
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
+              KeyedSubtree(
+                key: line.weightTarget,
+                child: TextFormField(
+                  key: ValueKey('weight-$index-${line.unitId}'),
+                  forceErrorText: line.validationErrors['KhoiLuong'],
+                  initialValue: line.weight?.toString() ?? '',
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'Khối lượng thực tế (kg)',
+                  ),
+                  onChanged: (value) => setState(() {
+                    line.validationErrors.remove('KhoiLuong');
+                    line.weight = num.tryParse(value);
+                    _invalidateEstimate();
+                  }),
+                  validator: (value) =>
+                      selectedPrice['is_weight'] == true &&
+                          (num.tryParse(value ?? '') ?? 0) <= 0
+                      ? 'Nhập khối lượng lớn hơn 0.'
+                      : null,
                 ),
-                decoration: const InputDecoration(
-                  labelText: 'Khối lượng thực tế (kg)',
-                ),
-                onChanged: (value) => setState(() {
-                  line.weight = num.tryParse(value);
-                  _invalidateEstimate();
-                }),
-                validator: (value) =>
-                    selectedPrice['is_weight'] == true &&
-                        (num.tryParse(value ?? '') ?? 0) <= 0
-                    ? 'Nhập khối lượng lớn hơn 0.'
-                    : null,
               )
             else if (selectedPrice != null)
-              TextFormField(
-                key: ValueKey('quantity-$index-${line.unitId}'),
-                initialValue: line.quantity?.toString() ?? '',
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Số lượng thực tế',
+              KeyedSubtree(
+                key: line.quantityTarget,
+                child: TextFormField(
+                  key: ValueKey('quantity-$index-${line.unitId}'),
+                  forceErrorText: line.validationErrors['SoLuong'],
+                  initialValue: line.quantity?.toString() ?? '',
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Số lượng thực tế',
+                  ),
+                  onChanged: (value) => setState(() {
+                    line.validationErrors.remove('SoLuong');
+                    line.quantity = int.tryParse(value);
+                    _invalidateEstimate();
+                  }),
+                  validator: (value) =>
+                      selectedPrice['is_weight'] != true &&
+                          (int.tryParse(value ?? '') ?? 0) < 1
+                      ? 'Nhập số lượng từ 1 trở lên.'
+                      : null,
                 ),
-                onChanged: (value) => setState(() {
-                  line.quantity = int.tryParse(value);
-                  _invalidateEstimate();
-                }),
-                validator: (value) =>
-                    selectedPrice['is_weight'] != true &&
-                        (int.tryParse(value ?? '') ?? 0) < 1
-                    ? 'Nhập số lượng từ 1 trở lên.'
-                    : null,
               ),
             if (selectedPrice != null) const SizedBox(height: 12),
-            TextFormField(
-              controller: line.condition,
-              maxLength: 320,
-              onChanged: (_) => setState(_invalidateEstimate),
-              decoration: const InputDecoration(
-                labelText: 'Tình trạng trước khi giặt *',
-                hintText: 'Ví dụ: ố màu, rách, bung chỉ',
+            KeyedSubtree(
+              key: line.conditionTarget,
+              child: TextFormField(
+                controller: line.condition,
+                forceErrorText: line.validationErrors['TinhTrangTruocKhiGiat'],
+                maxLength: 320,
+                onChanged: (_) => setState(() {
+                  line.validationErrors.remove('TinhTrangTruocKhiGiat');
+                  _invalidateEstimate();
+                }),
+                decoration: const InputDecoration(
+                  labelText: 'Tình trạng trước khi giặt *',
+                  hintText: 'Ví dụ: ố màu, rách, bung chỉ',
+                ),
+                validator: (value) => value == null || value.trim().isEmpty
+                    ? 'Ghi nhận tình trạng từng mặt hàng.'
+                    : null,
               ),
-              validator: (value) => value == null || value.trim().isEmpty
-                  ? 'Ghi nhận tình trạng từng mặt hàng.'
-                  : null,
             ),
             const SizedBox(height: 12),
             TextFormField(
@@ -1235,9 +1274,7 @@ class _StaffBookingInspectionScreenState
                     if (amount.isNotEmpty)
                       Text(
                         '$amount × ${_money(item['unit_price'])}',
-                        style: const TextStyle(
-                          color: AppColors.textSecondary,
-                        ),
+                        style: const TextStyle(color: AppColors.textSecondary),
                       ),
                   ],
                 ),
@@ -1598,7 +1635,10 @@ class _StaffBookingInspectionScreenState
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('Mã khuyến mãi', style: AppTypography.heading3),
+                            Text(
+                              'Mã khuyến mãi',
+                              style: AppTypography.heading3,
+                            ),
                             Text(
                               '${_vouchers.length} ưu đãi trong tài khoản',
                               style: AppTypography.bodySmall.copyWith(
@@ -1700,8 +1740,6 @@ class _StaffBookingInspectionScreenState
       _invalidateEstimate();
     });
   }
-
-  static const _methods = ['Tại cửa hàng', 'Tại nhà'];
 }
 
 class _StaffVoucherOptionCard extends StatelessWidget {
@@ -1909,8 +1947,16 @@ class _InspectionLine {
   int? unitId;
   int? quantity;
   num? weight;
+  final categoryTarget = GlobalKey();
+  final serviceTarget = GlobalKey();
+  final garmentTarget = GlobalKey();
+  final unitTarget = GlobalKey();
+  final quantityTarget = GlobalKey();
+  final weightTarget = GlobalKey();
+  final conditionTarget = GlobalKey();
   final condition = TextEditingController();
   final note = TextEditingController();
+  final validationErrors = <String, String>{};
 
   Map<String, dynamic>? selectedPrice(List<Map<String, dynamic>> prices) =>
       prices

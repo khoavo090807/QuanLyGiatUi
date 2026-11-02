@@ -28,7 +28,6 @@ class _StaffOrderQueueScreenState extends State<StaffOrderQueueScreen> {
   final _orderRepository = OrderRepository();
   final _staffRepository = StaffBookingRepository();
   late Future<_StaffQueueData> _queueFuture;
-  _StaffQueueData? _queueData;
   bool _isUpdating = false;
 
   @override
@@ -47,12 +46,10 @@ class _StaffOrderQueueScreenState extends State<StaffOrderQueueScreen> {
       },
     );
     if (!roles.any({'Nhân viên', 'Quản lý', 'Chủ cửa hàng'}.contains)) {
-      return _setQueueData(
-        _StaffQueueData(
-          roles: roles,
-          orders: const [],
-          completedBookings: const [],
-        ),
+      return _StaffQueueData(
+        roles: roles,
+        orders: const [],
+        completedBookings: const [],
       );
     }
     final queueFuture = _orderRepository.getStaffQueue().timeout(
@@ -72,22 +69,11 @@ class _StaffOrderQueueScreenState extends State<StaffOrderQueueScreen> {
           ),
         );
     final results = await Future.wait([queueFuture, bookingHistoryFuture]);
-    return _setQueueData(
-      _StaffQueueData(
-        roles: roles,
-        orders: results[0],
-        completedBookings: results[1],
-      ),
+    return _StaffQueueData(
+      roles: roles,
+      orders: results[0],
+      completedBookings: results[1],
     );
-  }
-
-  _StaffQueueData _setQueueData(_StaffQueueData data) {
-    if (mounted) {
-      setState(() => _queueData = data);
-    } else {
-      _queueData = data;
-    }
-    return data;
   }
 
   Future<void> _refresh() async {
@@ -112,9 +98,7 @@ class _StaffOrderQueueScreenState extends State<StaffOrderQueueScreen> {
       'Đã tiếp nhận' => ['Đang giặt', 'Đã hủy'],
       'Đang giặt' => ['Hoàn thành giặt'],
       'Hoàn thành giặt' =>
-        order.deliveryMethod == 'Tại nhà'
-            ? ['Đang giao']
-            : ['Đang giao', 'Đã giao'],
+        order.isHomeDelivery ? ['Đang giao'] : ['Đang giao', 'Đã giao'],
       'Đang giao' => ['Đã giao'],
       _ => const [],
     };
@@ -137,8 +121,9 @@ class _StaffOrderQueueScreenState extends State<StaffOrderQueueScreen> {
     }).toList();
     if (tab == 0) {
       filtered.sort(
-        (left, right) => (left.appointment ?? DateTime(9999))
-            .compareTo(right.appointment ?? DateTime(9999)),
+        (left, right) => (left.appointment ?? DateTime(9999)).compareTo(
+          right.appointment ?? DateTime(9999),
+        ),
       );
     }
     return filtered;
@@ -219,7 +204,7 @@ class _StaffOrderQueueScreenState extends State<StaffOrderQueueScreen> {
   );
 
   Future<void> _transition(LaundryOrderRecord order, String newStatus) async {
-    if (newStatus == 'Đã giao' && order.deliveryMethod == 'Tại nhà') {
+    if (newStatus == 'Đã giao' && order.isHomeDelivery) {
       final confirmed = await Navigator.of(context).push<bool>(
         MaterialPageRoute(
           builder: (_) => StaffDeliveryConfirmationScreen(order: order),
@@ -238,7 +223,7 @@ class _StaffOrderQueueScreenState extends State<StaffOrderQueueScreen> {
     setState(() => _isUpdating = true);
     try {
       if (order.orderId != null) {
-        if (newStatus == 'Đang giao' && order.deliveryMethod == 'Tại nhà') {
+        if (newStatus == 'Đang giao' && order.isHomeDelivery) {
           await _staffRepository.advanceDelivery(order.orderId!);
         } else {
           await _orderRepository.transitionStatus(
@@ -386,10 +371,7 @@ class _StaffOrderQueueScreenState extends State<StaffOrderQueueScreen> {
                   icon: Icon(Icons.check_circle_outline),
                   text: 'Hoàn thành',
                 ),
-                const Tab(
-                  icon: Icon(Icons.person_outline),
-                  text: 'Tài khoản',
-                ),
+                const Tab(icon: Icon(Icons.person_outline), text: 'Tài khoản'),
               ],
             ),
           ),
@@ -465,7 +447,7 @@ class _StaffOrderCard extends StatelessWidget {
     } else {
       actions = nextStatuses
           .where((status) {
-            if (order.deliveryMethod == 'Tại nhà' &&
+            if (order.isHomeDelivery &&
                 (status == 'Đang giao' || status == 'Đã giao')) {
               return order.canConfirmDelivery;
             }
@@ -480,9 +462,11 @@ class _StaffOrderCard extends StatelessWidget {
       typeDescription = 'Đặt lịch cần kiểm tra và nhận đồ';
     } else if (order.status == 'Đã hủy') {
       typeDescription = 'Đơn hàng đã hủy';
-    } else if (const {'Đã giao', 'Hoàn thành', 'Đã thanh toán'}.contains(
-      order.status,
-    )) {
+    } else if (const {
+      'Đã giao',
+      'Hoàn thành',
+      'Đã thanh toán',
+    }.contains(order.status)) {
       typeDescription = 'Đơn hàng đã hoàn tất';
     } else {
       typeDescription = 'Đơn hàng đang xử lý';
@@ -557,7 +541,9 @@ class _StaffOrderCard extends StatelessWidget {
               style: AppTypography.bodySmall,
             ),
           ],
-          if (isBooking && !order.isCompletedBooking && !order.hasLaundryDetails)
+          if (isBooking &&
+              !order.isCompletedBooking &&
+              !order.hasLaundryDetails)
             const Padding(
               padding: EdgeInsets.only(top: 8),
               child: Text('Kiểm tra để báo giá'),

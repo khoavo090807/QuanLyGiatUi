@@ -331,6 +331,9 @@ class LaundryOrderRecord {
   final bool canConfirmDelivery;
   final bool isCompletedBooking;
 
+  bool get isHomeDelivery =>
+      deliveryMethod == 'Tại nhà' || canConfirmDelivery;
+
   String? get logisticsSummary {
     final methods = <String>[];
     if (pickupMethod != null) {

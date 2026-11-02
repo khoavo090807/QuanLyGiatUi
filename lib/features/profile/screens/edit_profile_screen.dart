@@ -15,7 +15,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   final _name = TextEditingController();
   final _phoneController = TextEditingController();
   String? _email;
-  String? _phone;
   String? _address;
   bool _loading = true;
   bool _saving = false;
@@ -44,7 +43,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         setState(() {
           _name.text = profile.displayName;
           _email = profile.email;
-          _phone = profile.phone;
           _phoneController.text = profile.phone ?? '';
           _address = profile.address;
           _avatarUrl = profile.avatarUrl;
