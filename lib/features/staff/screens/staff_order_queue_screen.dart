@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:app_quanly_giaiui/core/navigation/app_routes.dart';
 import 'package:app_quanly_giaiui/core/theme/app_colors.dart';
@@ -11,8 +12,10 @@ import 'package:app_quanly_giaiui/features/auth/data/auth_repository.dart';
 import 'package:app_quanly_giaiui/features/auth/data/staff_api_auth_repository.dart';
 import 'package:app_quanly_giaiui/features/order/data/order_repository.dart';
 import 'package:app_quanly_giaiui/features/staff/data/staff_booking_repository.dart';
+import 'package:app_quanly_giaiui/features/staff/data/staff_notification_repository.dart';
 import 'package:app_quanly_giaiui/features/profile/screens/profile_screen.dart';
 import 'package:app_quanly_giaiui/features/staff/screens/staff_delivery_confirmation_screen.dart';
+import 'package:app_quanly_giaiui/features/staff/screens/staff_notifications_screen.dart';
 
 class StaffOrderQueueScreen extends StatefulWidget {
   const StaffOrderQueueScreen({super.key, this.initialTabIndex = 0});
@@ -24,16 +27,137 @@ class StaffOrderQueueScreen extends StatefulWidget {
 }
 
 class _StaffOrderQueueScreenState extends State<StaffOrderQueueScreen> {
+  static const _notificationSound = MethodChannel(
+    'com.example.app_quanly_giaiui/notification_sound',
+  );
+
   final _authRepository = AuthRepository();
   final _orderRepository = OrderRepository();
   final _staffRepository = StaffBookingRepository();
+  final _notificationRepository = StaffNotificationRepository();
   late Future<_StaffQueueData> _queueFuture;
+  Timer? _notificationCountTimer;
+  final _unreadNotificationCount = ValueNotifier<int>(0);
+  int? _latestNotificationId;
+  bool _hasCheckedNotifications = false;
   bool _isUpdating = false;
 
   @override
   void initState() {
     super.initState();
     _queueFuture = _loadQueue();
+    unawaited(_refreshUnreadNotificationCount());
+    _notificationCountTimer = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => _refreshUnreadNotificationCount(),
+    );
+  }
+
+  @override
+  void dispose() {
+    _notificationCountTimer?.cancel();
+    _unreadNotificationCount.dispose();
+    super.dispose();
+  }
+
+  Future<void> _refreshUnreadNotificationCount() async {
+    try {
+      final page = await _notificationRepository.getPage();
+      if (!mounted) return;
+      final latestId = page.notifications.firstOrNull?.id;
+      if (_hasCheckedNotifications &&
+          latestId != null &&
+          (_latestNotificationId == null ||
+              latestId > _latestNotificationId!)) {
+        unawaited(_playAssignmentNotificationSound());
+      }
+      _hasCheckedNotifications = true;
+      if (latestId != null) _latestNotificationId = latestId;
+      _unreadNotificationCount.value = page.unreadCount;
+    } catch (_) {
+      // Keep the last known unread count while the network is unavailable.
+    }
+  }
+
+  Future<void> _playAssignmentNotificationSound() async {
+    try {
+      await _notificationSound.invokeMethod<void>('play', {
+        'type': 'staff_assignment',
+      });
+    } on MissingPluginException {
+      // The native notification tone is available on Android only.
+    } on PlatformException catch (error) {
+      debugPrint('Could not play assignment notification tone: $error');
+    }
+  }
+
+  Future<void> _openNotifications() async {
+    final selected = await Navigator.of(context).push<StaffNotification>(
+      MaterialPageRoute(
+        builder: (_) => StaffNotificationsScreen(
+          unreadNotificationCount: _unreadNotificationCount,
+        ),
+      ),
+    );
+    if (selected == null || !mounted) return;
+    if (selected.orderId == null && selected.bookingId != null) {
+      await _openInspection(selected.bookingId!);
+      return;
+    }
+    if (selected.orderId == null) return;
+
+    List<LaundryOrderRecord> orders;
+    try {
+      orders = await _orderRepository.getStaffQueue();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Không thể mở công việc: $error')),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+    LaundryOrderRecord? targetOrder;
+    for (final order in orders) {
+      if (order.orderId == selected.orderId) {
+        targetOrder = order;
+        break;
+      }
+    }
+    if (targetOrder == null) return;
+    final orderToOpen = targetOrder;
+
+    final statuses = _nextStatuses(orderToOpen).where((status) {
+      if (status == 'Đã hủy') return false;
+      return selected.type == 'staff_assignment_pickup' ||
+          status == 'Đang giao' ||
+          status == 'Đã giao';
+    });
+    final status = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Đơn ${orderToOpen.orderNumber}'),
+        content: Text(
+          statuses.isEmpty
+              ? 'Trạng thái hiện tại: ${orderToOpen.status}. Công việc sẽ sẵn sàng xử lý khi đơn đến bước giao nhận.'
+              : 'Trạng thái hiện tại: ${orderToOpen.status}',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Đóng'),
+          ),
+          ...statuses.map(
+            (value) => FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, value),
+              child: Text(value),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (status != null && mounted) await _transition(orderToOpen, status);
   }
 
   Future<_StaffQueueData> _loadQueue() async {
@@ -302,9 +426,16 @@ class _StaffOrderQueueScreenState extends State<StaffOrderQueueScreen> {
           ),
           actions: [
             IconButton(
-              tooltip: 'Làm mới',
-              onPressed: _refresh,
-              icon: const Icon(Icons.refresh),
+              tooltip: 'Thông báo công việc',
+              onPressed: _openNotifications,
+              icon: ValueListenableBuilder<int>(
+                valueListenable: _unreadNotificationCount,
+                builder: (context, count, _) => Badge(
+                  isLabelVisible: count > 0,
+                  smallSize: 10,
+                  child: const Icon(Icons.notifications_outlined),
+                ),
+              ),
             ),
           ],
         ),

@@ -92,6 +92,24 @@ Deno.serve(async (request: Request) => {
       return new Response("Invalid notification account", { status: 400 });
     }
 
+    const notificationType = String(record.LoaiThongBao ?? "");
+    const isStaffAssignment = ["staff_assignment_pickup", "staff_assignment_delivery"]
+      .includes(notificationType);
+    const accountResponse = await fetch(
+      `${supabaseUrl}/rest/v1/TaiKhoan?select=NhanVienID,KhachHangID&TaiKhoanID=eq.${accountId}&limit=1`,
+      { headers: { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}` } },
+    );
+    if (!accountResponse.ok) {
+      return new Response("Could not load notification account", { status: 502 });
+    }
+    const accounts: Array<{ NhanVienID: number | null; KhachHangID: number | null }> =
+      await accountResponse.json();
+    const account = accounts[0];
+    if (!account) return new Response(null, { status: 204 });
+    if (account.NhanVienID !== null ? !isStaffAssignment : isStaffAssignment) {
+      return new Response(null, { status: 204 });
+    }
+
     const serviceAccount = JSON.parse(firebaseJson);
     const accessToken = await createGoogleAccessToken(serviceAccount);
     const tokensResponse = await fetch(

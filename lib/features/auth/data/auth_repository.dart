@@ -350,8 +350,8 @@ class AuthRepository {
 
   Future<void> signOut() async {
     final staffAuth = StaffApiAuthRepository.instance;
-    if (staffAuth.isSignedIn) await staffAuth.signOut();
     await NotificationService.instance.unregisterCurrentDevice();
+    if (staffAuth.isSignedIn) await staffAuth.signOut();
     if (_client.auth.currentSession != null) await _client.auth.signOut();
   }
 
