@@ -736,7 +736,7 @@ class _StaffBookingInspectionScreenState
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    'Booking ${booking['code'] ?? ''}',
+                    'Đặt lịch ${booking['code'] ?? ''}',
                     style: const TextStyle(color: AppColors.textSecondary),
                   ),
                   const SizedBox(height: 8),
@@ -1220,8 +1220,6 @@ class _StaffBookingInspectionScreenState
     final subtotal = estimate['TongTien'] ?? estimate['subtotal'];
     final promotionDiscount = estimate['TienGiamKhuyenMai'] ?? 0;
     final pointsDiscount = estimate['TienGiamDoDiem'] ?? 0;
-    final totalDiscount =
-        (_asNum(promotionDiscount) ?? 0) + (_asNum(pointsDiscount) ?? 0);
     final items = _maps(estimate['items']);
     final pickupFee = estimate['PhiNhanDo'] ?? _booking?['pickup_fee'];
     final returnFee = estimate['PhiGiaoDo'] ?? _booking?['return_fee'];
@@ -1301,7 +1299,7 @@ class _StaffBookingInspectionScreenState
               '-${_money(promotionDiscount)}',
             ),
             _estimateRow('Giảm từ điểm tích lũy', '-${_money(pointsDiscount)}'),
-            _estimateRow('Tổng tiền được giảm', '-${_money(totalDiscount)}'),
+            
             _estimateRow(
               'Tổng tiền thanh toán',
               _money(estimate['ThanhTien'] ?? estimate['total_amount']),
