@@ -5,6 +5,10 @@ class ValidatorUtils {
     if (appointment.isBefore(now ?? DateTime.now())) {
       return 'Lịch hẹn không được ở thời điểm quá khứ';
     }
+    if (appointment.hour < 8 || appointment.hour > 17 ||
+        (appointment.hour == 17 && appointment.minute > 0)) {
+      return 'Chỉ nhận lịch hẹn từ 08:00 đến 17:00';
+    }
     return null;
   }
 

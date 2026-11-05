@@ -25,6 +25,37 @@ void main() {
         isNull,
       );
     });
+
+    test('allows appointments only from 08:00 through 17:00', () {
+      expect(
+        ValidatorUtils.validateAppointment(
+          DateTime(2026, 10, 18, 8),
+          now: DateTime(2026, 10, 18, 7),
+        ),
+        isNull,
+      );
+      expect(
+        ValidatorUtils.validateAppointment(
+          DateTime(2026, 10, 18, 17),
+          now: DateTime(2026, 10, 18, 7),
+        ),
+        isNull,
+      );
+      expect(
+        ValidatorUtils.validateAppointment(
+          DateTime(2026, 10, 18, 7, 59),
+          now: DateTime(2026, 10, 18, 7),
+        ),
+        isNotNull,
+      );
+      expect(
+        ValidatorUtils.validateAppointment(
+          DateTime(2026, 10, 18, 17, 1),
+          now: DateTime(2026, 10, 18, 7),
+        ),
+        isNotNull,
+      );
+    });
   });
 
   group('ValidatorUtils.validatePhone', () {
