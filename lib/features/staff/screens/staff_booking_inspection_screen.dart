@@ -5,6 +5,8 @@ import 'package:intl/intl.dart';
 import 'package:app_quanly_giaiui/core/theme/app_colors.dart';
 import 'package:app_quanly_giaiui/core/theme/app_typography.dart';
 import 'package:app_quanly_giaiui/features/staff/data/staff_booking_repository.dart';
+import 'package:app_quanly_giaiui/features/order/data/order_repository.dart'
+    show laundryStoreAddress;
 
 class StaffBookingInspectionScreen extends StatefulWidget {
   const StaffBookingInspectionScreen({required this.bookingId, super.key});
@@ -546,156 +548,159 @@ class _StaffBookingInspectionScreenState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-              _customerCard(_booking!),
-              const SizedBox(height: 18),
-              _sectionTitle(
-                'THÔNG TIN NHẬN VÀ GIAO ĐỒ',
-                Icons.local_shipping_outlined,
-              ),
-              const SizedBox(height: 8),
-              _bookingDetailsCard(),
-              const SizedBox(height: 18),
-              _sectionTitle('ĐỒ THỰC TẾ', Icons.dry_cleaning_outlined),
-              const SizedBox(height: 8),
-              ..._lines.asMap().entries.map(
-                (entry) => _lineCard(entry.key, entry.value),
-              ),
-              OutlinedButton.icon(
-                onPressed: () => setState(() {
-                  _lines.add(_InspectionLine());
-                  _invalidateEstimate();
-                }),
-                icon: const Icon(Icons.add),
-                label: const Text('Thêm món đồ'),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(48),
+                _customerCard(_booking!),
+                const SizedBox(height: 18),
+                _sectionTitle(
+                  'THÔNG TIN NHẬN VÀ GIAO ĐỒ',
+                  Icons.local_shipping_outlined,
+                ),
+                const SizedBox(height: 8),
+                _bookingDetailsCard(),
+                const SizedBox(height: 18),
+                _sectionTitle('ĐỒ THỰC TẾ', Icons.dry_cleaning_outlined),
+                const SizedBox(height: 8),
+                ..._lines.asMap().entries.map(
+                  (entry) => _lineCard(entry.key, entry.value),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => setState(() {
+                    _lines.add(_InspectionLine());
+                    _invalidateEstimate();
+                  }),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Thêm món đồ'),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(48),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                _sectionTitle('ƯU ĐÃI CỦA KHÁCH', Icons.local_offer_outlined),
+                const SizedBox(height: 8),
+                _rewardChoices(),
+                const SizedBox(height: 18),
+                _sectionTitle('GHI CHÚ', Icons.receipt_long_outlined),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _note,
+                  maxLength: 500,
+                  maxLines: 2,
+                  onChanged: (_) => setState(_invalidateEstimate),
+                  decoration: const InputDecoration(
+                    labelText: 'Ghi chú đặt lịch',
+                    hintText: 'Thông tin thêm khách cần biết',
+                    alignLabelWithHint: true,
+                    filled: true,
+                    fillColor: AppColors.surface,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                if (_estimate != null) _estimateCard(_estimate!),
+                const SizedBox(height: 12),
+                _reviewStatusCard(),
+                const SizedBox(height: 10),
+                FilledButton.icon(
+                  onPressed: (_isSaving || _isEstimating)
+                      ? null
+                      : _estimate == null
+                      ? _calculateEstimate
+                      : _saveDraft,
+                  icon: _isSaving || _isEstimating
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Icon(
+                          _estimate == null
+                              ? Icons.calculate_outlined
+                              : Icons.save_outlined,
+                        ),
+                  label: Text(
+                    _estimate == null
+                        ? 'Tính giá trị đơn đặt lịch'
+                        : _draftSaved
+                        ? 'Lưu lại cập nhật đặt lịch'
+                        : 'Lưu đặt lịch cho khách xem',
+                  ),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(50),
+                    backgroundColor: AppColors.secondary,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                CheckboxListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                  value: _customerAgreed,
+                  onChanged: !_draftSaved || _isSubmitting || _isSaving
+                      ? null
+                      : (value) =>
+                            setState(() => _customerAgreed = value ?? false),
+                  title: const Text(
+                    'Nhân viên xác nhận khách đã đồng ý bằng lời',
+                  ),
+                  subtitle: Text(
+                    _draftSaved
+                        ? 'Hãy báo kết quả kiểm tra và tổng tiền rồi hỏi khách trực tiếp; khách không cần thao tác trên ứng dụng.'
+                        : 'Lưu thông tin kiểm tra và tính giá trước khi báo khách trực tiếp.',
+                  ),
+                  controlAffinity: ListTileControlAffinity.leading,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
                   ),
+                  tileColor: AppColors.surface,
                 ),
-              ),
-              const SizedBox(height: 18),
-              _sectionTitle('ƯU ĐÃI CỦA KHÁCH', Icons.local_offer_outlined),
-              const SizedBox(height: 8),
-              _rewardChoices(),
-              const SizedBox(height: 18),
-              _sectionTitle('GHI CHÚ', Icons.receipt_long_outlined),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _note,
-                maxLength: 500,
-                maxLines: 2,
-                onChanged: (_) => setState(_invalidateEstimate),
-                decoration: const InputDecoration(
-                  labelText: 'Ghi chú đặt lịch',
-                  hintText: 'Thông tin thêm khách cần biết',
-                  alignLabelWithHint: true,
-                  filled: true,
-                  fillColor: AppColors.surface,
-                ),
-              ),
-              const SizedBox(height: 8),
-              if (_estimate != null) _estimateCard(_estimate!),
-              const SizedBox(height: 12),
-              _reviewStatusCard(),
-              const SizedBox(height: 10),
-              FilledButton.icon(
-                onPressed: (_isSaving || _isEstimating)
-                    ? null
-                    : _estimate == null
-                    ? _calculateEstimate
-                    : _saveDraft,
-                icon: _isSaving || _isEstimating
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : Icon(
-                        _estimate == null
-                            ? Icons.calculate_outlined
-                            : Icons.save_outlined,
-                      ),
-                label: Text(
-                  _estimate == null
-                      ? 'Tính giá trị đơn đặt lịch'
-                      : _draftSaved
-                      ? 'Lưu lại cập nhật đặt lịch'
-                      : 'Lưu đặt lịch cho khách xem',
-                ),
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(50),
-                  backgroundColor: AppColors.secondary,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed:
+                      _isCancelling ||
+                          _isSaving ||
+                          _isEstimating ||
+                          _isSubmitting
+                      ? null
+                      : _refuseQuote,
+                  icon: _isCancelling
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.cancel_outlined),
+                  label: const Text('Khách từ chối - Hủy đặt lịch'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.red,
+                    side: const BorderSide(color: Colors.red),
+                    minimumSize: const Size.fromHeight(48),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 10),
-              CheckboxListTile(
-                contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-                value: _customerAgreed,
-                onChanged: !_draftSaved || _isSubmitting || _isSaving
-                    ? null
-                    : (value) =>
-                          setState(() => _customerAgreed = value ?? false),
-                title: const Text(
-                  'Nhân viên xác nhận khách đã đồng ý bằng lời',
-                ),
-                subtitle: Text(
-                  _draftSaved
-                      ? 'Hãy báo kết quả kiểm tra và tổng tiền rồi hỏi khách trực tiếp; khách không cần thao tác trên ứng dụng.'
-                      : 'Lưu thông tin kiểm tra và tính giá trước khi báo khách trực tiếp.',
-                ),
-                controlAffinity: ListTileControlAffinity.leading,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                tileColor: AppColors.surface,
-              ),
-              const SizedBox(height: 8),
-              OutlinedButton.icon(
-                onPressed:
-                    _isCancelling || _isSaving || _isEstimating || _isSubmitting
-                    ? null
-                    : _refuseQuote,
-                icon: _isCancelling
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.cancel_outlined),
-                label: const Text('Khách từ chối - Hủy đặt lịch'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.red,
-                  side: const BorderSide(color: Colors.red),
-                  minimumSize: const Size.fromHeight(48),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
+                const SizedBox(height: 8),
+                FilledButton.icon(
+                  onPressed: _isSubmitting || !_draftSaved || !_customerAgreed
+                      ? null
+                      : _confirm,
+                  icon: _isSubmitting
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.check_circle_outline),
+                  label: const Text('Khách đồng ý - xác nhận và tạo đơn'),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(52),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              FilledButton.icon(
-                onPressed: _isSubmitting || !_draftSaved || !_customerAgreed
-                    ? null
-                    : _confirm,
-                icon: _isSubmitting
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.check_circle_outline),
-                label: const Text('Khách đồng ý - xác nhận và tạo đơn'),
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(52),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
-              ),
               ],
             ),
           ),
@@ -836,12 +841,15 @@ class _StaffBookingInspectionScreenState
             'Hình thức nhận đồ',
             _receiveMethod,
           ),
-          if (_receiveMethod == 'Tại nhà')
-            _infoLine(
-              Icons.location_on_outlined,
-              'Địa chỉ nhận đồ',
-              _receiveAddress.text,
-            ),
+          _infoLine(
+            Icons.location_on_outlined,
+            'Địa chỉ nhận đồ',
+            _receiveMethod == 'Tại cửa hàng'
+                ? (_receiveAddress.text.trim().isEmpty
+                      ? laundryStoreAddress
+                      : _receiveAddress.text)
+                : _receiveAddress.text,
+          ),
           _infoLine(
             Icons.calendar_month_outlined,
             'Ngày hẹn',
@@ -1299,7 +1307,7 @@ class _StaffBookingInspectionScreenState
               '-${_money(promotionDiscount)}',
             ),
             _estimateRow('Giảm từ điểm tích lũy', '-${_money(pointsDiscount)}'),
-            
+
             _estimateRow(
               'Tổng tiền thanh toán',
               _money(estimate['ThanhTien'] ?? estimate['total_amount']),
@@ -1349,9 +1357,7 @@ class _StaffBookingInspectionScreenState
       );
 
   String _distanceLabel(dynamic meters) {
-    final distance = _asNum(meters);
-    if (distance == null || distance <= 0) return '';
-    final km = distance / 1000;
+    final km = (_asNum(meters) ?? 0) / 1000;
     final text = km == km.roundToDouble()
         ? km.toStringAsFixed(0)
         : km.toStringAsFixed(1);

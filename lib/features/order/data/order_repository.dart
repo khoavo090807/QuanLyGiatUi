@@ -7,6 +7,10 @@ import 'package:app_quanly_giaiui/features/order/domain/cart_item.dart';
 import 'package:app_quanly_giaiui/features/order/data/delivery_fee_quote.dart';
 import 'package:app_quanly_giaiui/features/staff/data/staff_booking_repository.dart';
 
+// shortcut: keep this in sync with the store address configured in services.php.
+const String laundryStoreAddress =
+    '140 Lê Trọng Tấn, Tây Thạnh, Hồ Chí Minh, Việt Nam';
+
 enum LaundryBookingStatus {
   awaitingReception('ChoTiepNhan', 'Chờ tiếp nhận'),
   confirmed('DaXacNhan', 'Đã xác nhận'),
@@ -213,6 +217,25 @@ String? _asString(dynamic value) {
   return text.isEmpty ? null : text;
 }
 
+String? _paymentMethodFromOrderNote(dynamic value) {
+  final note = _asString(value);
+  if (note == null) return null;
+  return RegExp(
+    r'^Hình thức thanh toán:\s*([^|]+)',
+  ).firstMatch(note)?.group(1)?.trim();
+}
+
+String? _customerNoteFromOrderNote(dynamic value) {
+  final note = _asString(value);
+  if (note == null) return null;
+  return _asString(
+    note.replaceFirst(
+      RegExp(r'^Hình thức thanh toán:\s*[^|]+(?:\s*\|\s*)?'),
+      '',
+    ),
+  );
+}
+
 DateTime? _parseAppointment(dynamic dateValue, dynamic timeValue) {
   if (dateValue == null || timeValue == null) return null;
   try {
@@ -257,6 +280,7 @@ List<LaundryOrderItem> _parseOrderItems(List<dynamic>? details) {
           measurement: measurement,
           unitPriceVnd: _asNum(detail['DonGia']) ?? 0,
           totalVnd: _asNum(detail['ThanhTien']) ?? 0,
+          conditionBeforeLaundry: _asString(detail['TinhTrangTruocKhiGiat']),
         );
       })
       .toList(growable: false);
@@ -268,8 +292,8 @@ class LaundryOrderRecord {
     this.bookingId,
     this.pickupMethod,
     this.deliveryMethod,
-    this.pickupAddress,
-    this.deliveryAddress,
+    String? pickupAddress,
+    String? deliveryAddress,
     this.appointment,
     this.notes,
     this.paymentMethod,
@@ -296,7 +320,12 @@ class LaundryOrderRecord {
     this.customerPhone,
     this.canConfirmDelivery = false,
     this.isCompletedBooking = false,
-  });
+  }) : pickupAddress =
+           pickupAddress ??
+           (pickupMethod == 'Tại cửa hàng' ? laundryStoreAddress : null),
+       deliveryAddress =
+           deliveryAddress ??
+           (deliveryMethod == 'Tại cửa hàng' ? laundryStoreAddress : null);
 
   final int? orderId;
   final int? bookingId;
@@ -331,8 +360,7 @@ class LaundryOrderRecord {
   final bool canConfirmDelivery;
   final bool isCompletedBooking;
 
-  bool get isHomeDelivery =>
-      deliveryMethod == 'Tại nhà' || canConfirmDelivery;
+  bool get isHomeDelivery => deliveryMethod == 'Tại nhà' || canConfirmDelivery;
 
   String? get logisticsSummary {
     final methods = <String>[];
@@ -348,8 +376,13 @@ class LaundryOrderRecord {
   factory LaundryOrderRecord.fromJson(Map<String, dynamic> json) {
     final details = json['ChiTietDonHang'] as List<dynamic>? ?? const [];
     final booking = json['Booking'] as Map<String, dynamic>?;
-    final delivery = (json['GiaoNhan'] as List<dynamic>? ?? const [])
+    final deliveryLegs = (json['GiaoNhan'] as List<dynamic>? ?? const [])
         .whereType<Map<String, dynamic>>()
+        .toList(growable: false);
+    final pickup = deliveryLegs
+        .where((leg) => leg['LoaiGiaoNhan'] == 'NHAN_DO')
+        .firstOrNull;
+    final delivery = deliveryLegs
         .where((leg) => leg['LoaiGiaoNhan'] == 'GIAO_DO')
         .firstOrNull;
     final items = _parseOrderItems(details);
@@ -371,19 +404,22 @@ class LaundryOrderRecord {
       canConfirmDelivery: json['CanConfirmDelivery'] == true,
       pickupMethod:
           _asString(booking?['HinhThucNhanDo']) ??
+          _asString(pickup?['HinhThuc']) ??
           (booking == null ? 'Tại cửa hàng' : null),
       deliveryMethod:
           _asString(delivery?['HinhThuc']) ??
           _deliveryMethodOf(booking) ??
           (booking == null ? 'Tại cửa hàng' : null),
-      pickupAddress: _asString(booking?['DiaChiNhan']),
+      pickupAddress:
+          _asString(pickup?['DiaChi']) ?? _asString(booking?['DiaChiNhan']),
       deliveryAddress:
           _asString(delivery?['DiaChi']) ?? _deliveryAddressOf(booking),
       appointment: _parseAppointment(booking?['NgayHen'], booking?['GioHen']),
       notes: _asString(booking?['GhiChu']),
       paymentMethod:
           _asString(json['PhuongThucThanhToan']) ??
-          _asString(booking?['PhuongThucThanhToan']),
+          _asString(booking?['PhuongThucThanhToan']) ??
+          _paymentMethodFromOrderNote(json['GhiChu']),
       items: items.isEmpty ? null : items,
       subtotalVnd: _asNum(json['TongTien']),
       pointsUsed: _asInt(json['DiemSuDung'] ?? booking?['DiemSuDung']) ?? 0,
@@ -401,9 +437,15 @@ class LaundryOrderRecord {
           : descriptions.join(', '),
       hasLaundryDetails: items.isNotEmpty,
       pickupDistanceMeters: _asInt(booking?['PickupDistanceMeters']) ?? 0,
-      pickupDeliveryFeeVnd: _asNum(booking?['PickupDeliveryFee']) ?? 0,
+      pickupDeliveryFeeVnd:
+          _asNum(booking?['PickupDeliveryFee']) ??
+          _asNum(pickup?['PhiGiaoNhan']) ??
+          0,
       deliveryDistanceMeters: _asInt(booking?['DeliveryDistanceMeters']) ?? 0,
-      deliveryLegFeeVnd: _asNum(booking?['DeliveryFee']) ?? 0,
+      deliveryLegFeeVnd:
+          _asNum(booking?['DeliveryFee']) ??
+          _asNum(delivery?['PhiGiaoNhan']) ??
+          0,
     );
   }
 
@@ -530,8 +572,8 @@ class LaundryOrderDetails {
     this.pickupMethod,
     this.deliveryMethod,
     this.paymentMethod,
-    this.address,
-    this.deliveryAddress,
+    String? address,
+    String? deliveryAddress,
     this.appointment,
     this.notes,
     this.items,
@@ -544,7 +586,12 @@ class LaundryOrderDetails {
     this.promotionApplied = false,
     this.promotionCode,
     this.finalTotalVnd,
-  });
+  }) : address =
+           address ??
+           (pickupMethod == 'Tại cửa hàng' ? laundryStoreAddress : null),
+       deliveryAddress =
+           deliveryAddress ??
+           (deliveryMethod == 'Tại cửa hàng' ? laundryStoreAddress : null);
 
   final LaundryOrderRecord order;
   final List<LaundryOrderStatusEvent> events;
@@ -596,6 +643,7 @@ class LaundryOrderItem {
     required this.measurement,
     required this.unitPriceVnd,
     required this.totalVnd,
+    this.conditionBeforeLaundry,
   });
 
   final int? serviceId;
@@ -607,6 +655,7 @@ class LaundryOrderItem {
   final num measurement;
   final num unitPriceVnd;
   final num totalVnd;
+  final String? conditionBeforeLaundry;
 }
 
 class OrderRepository {
@@ -884,7 +933,9 @@ class OrderRepository {
   Future<List<LaundryOrderRecord>> getStaffBookingHistory() async {
     final bookings = await _staffBookingRepository.getCompletedBookings();
     return bookings
-        .map((booking) => _staffBookingRecord(booking, isCompletedBooking: true))
+        .map(
+          (booking) => _staffBookingRecord(booking, isCompletedBooking: true),
+        )
         .toList(growable: false);
   }
 
@@ -1028,9 +1079,10 @@ class OrderRepository {
         .select(
           'DonHangID,BookingID,MaDonHang,TrangThai,TongTien,DiemSuDung,'
           'TienGiamDoDiem,KhuyenMaiID,TienGiamKhuyenMai,PhiGiaoHang,'
-          'ThanhTien,NgayTao,KhuyenMai(MaKhuyenMai),'
+          'ThanhTien,NgayTao,GhiChu,KhuyenMai(MaKhuyenMai),'
+          'GiaoNhan(LoaiGiaoNhan,HinhThuc,DiaChi,PhiGiaoNhan,ThoiGianDuKien),'
           'ChiTietDonHang('
-          'SoLuong,KhoiLuong,DonGia,ThanhTien,'
+          'SoLuong,KhoiLuong,DonGia,ThanhTien,TinhTrangTruocKhiGiat,'
           'DichVu(TenDichVu),'
           'LoaiDoGiat(TenLoaiDoGiat),'
           'DonViTinh(KyHieu)'
@@ -1093,25 +1145,16 @@ class OrderRepository {
     }
 
     final details = order['ChiTietDonHang'] as List<dynamic>? ?? [];
-    final items = details
-        .map((entry) {
-          final detail = entry as Map<String, dynamic>;
-          final service = detail['DichVu'] as Map<String, dynamic>?;
-          final itemType = detail['LoaiDoGiat'] as Map<String, dynamic>?;
-          final unit = detail['DonViTinh'] as Map<String, dynamic>?;
-          final measurement = detail['KhoiLuong'] ?? detail['SoLuong'];
-          final unitPrice = detail['DonGia'] as num? ?? 0;
-          final total = detail['ThanhTien'] as num? ?? 0;
-          return LaundryOrderItem(
-            serviceName: service?['TenDichVu'] as String? ?? 'Dịch vụ',
-            itemTypeName: itemType?['TenLoaiDoGiat'] as String? ?? 'Đồ giặt',
-            unitSymbol: unit?['KyHieu'] as String? ?? '',
-            measurement: measurement as num,
-            unitPriceVnd: unitPrice,
-            totalVnd: total,
-          );
-        })
+    final items = _parseOrderItems(details);
+    final deliveryLegs = (order['GiaoNhan'] as List<dynamic>? ?? const [])
+        .whereType<Map<String, dynamic>>()
         .toList(growable: false);
+    final pickup = deliveryLegs
+        .where((leg) => leg['LoaiGiaoNhan'] == 'NHAN_DO')
+        .firstOrNull;
+    final delivery = deliveryLegs
+        .where((leg) => leg['LoaiGiaoNhan'] == 'GIAO_DO')
+        .firstOrNull;
 
     return LaundryOrderDetails(
       order: LaundryOrderRecord.fromJson({...order, 'Booking': ?booking}),
@@ -1121,15 +1164,26 @@ class OrderRepository {
                 LaundryOrderStatusEvent.fromJson(event as Map<String, dynamic>),
           )
           .toList(growable: false),
-      pickupMethod: _asString(booking?['HinhThucNhanDo']),
-      deliveryMethod: _deliveryMethodOf(booking),
+      pickupMethod:
+          _asString(booking?['HinhThucNhanDo']) ??
+          _asString(pickup?['HinhThuc']) ??
+          (booking == null ? 'Tại cửa hàng' : null),
+      deliveryMethod:
+          _asString(delivery?['HinhThuc']) ??
+          _deliveryMethodOf(booking) ??
+          (booking == null ? 'Tại cửa hàng' : null),
       paymentMethod:
           _asString(booking?['PhuongThucThanhToan']) ??
+          _paymentMethodFromOrderNote(order['GhiChu']) ??
           await _getPaymentMethod(orderId),
-      address: _asString(booking?['DiaChiNhan']),
-      deliveryAddress: _deliveryAddressOf(booking),
+      address:
+          _asString(pickup?['DiaChi']) ?? _asString(booking?['DiaChiNhan']),
+      deliveryAddress:
+          _asString(delivery?['DiaChi']) ?? _deliveryAddressOf(booking),
       appointment: appointment,
-      notes: _asString(booking?['GhiChu']),
+      notes:
+          _asString(booking?['GhiChu']) ??
+          _customerNoteFromOrderNote(order['GhiChu']),
       items: items.isNotEmpty ? items : null,
       subtotalVnd: order['TongTien'] as num?,
       deliveryFeeVnd: order['PhiGiaoHang'] as num? ?? 0,
@@ -1285,8 +1339,7 @@ class OrderRepository {
                 itemTypeId: (garment?['LoaiDoGiatID'] as num?)?.toInt(),
                 unitId: (unit?['DonViTinhID'] as num?)?.toInt(),
                 serviceName: service?['TenDichVu'] as String? ?? 'Dịch vụ',
-                itemTypeName:
-                    garment?['TenLoaiDoGiat'] as String? ?? 'Đồ giặt',
+                itemTypeName: garment?['TenLoaiDoGiat'] as String? ?? 'Đồ giặt',
                 unitSymbol:
                     unit?['KyHieu'] as String? ??
                     unit?['TenDonViTinh'] as String? ??

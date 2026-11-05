@@ -78,17 +78,19 @@ class _TrackingScreenState extends State<TrackingScreen> {
     return visible.isEmpty ? null : visible;
   }
 
-  String _formatDistance(num meters) =>
-      '${(meters / 1000).toStringAsFixed(1)} km';
+  String _formatDistance(num meters) {
+    final km = meters / 1000;
+    return km == km.roundToDouble()
+        ? '${km.toStringAsFixed(0)} km'
+        : '${km.toStringAsFixed(1)} km';
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          widget.orderId != null
-              ? 'Chi tiết đơn hàng'
-              : 'Chi tiết yêu cầu',
+          widget.orderId != null ? 'Chi tiết đơn hàng' : 'Chi tiết yêu cầu',
         ),
         actions: widget.orderId == null
             ? null
@@ -214,19 +216,20 @@ class _TrackingScreenState extends State<TrackingScreen> {
                         'Dịch vụ (${(details.items?.length ?? 0) + requestedServices.length} mục)',
                     children: [
                       ...(details.items ?? const <LaundryOrderItem>[]).map(
-                          (item) => Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: _SummaryRow(
-                              label:
-                                  '${item.serviceName} · ${item.itemTypeName}\n'
-                                  '${item.measurement} ${item.unitSymbol}'
-                                  '${item.unitPriceVnd > 0 ? ' × ${_formatVnd(item.unitPriceVnd)}' : ''}',
-                              value: item.totalVnd > 0
-                                  ? _formatVnd(item.totalVnd)
-                                  : '',
-                            ),
+                        (item) => Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: _SummaryRow(
+                            label:
+                                '${item.serviceName} (${item.itemTypeName})\n'
+                                '${item.measurement} ${item.unitSymbol}'
+                                '${item.unitPriceVnd > 0 ? ' × ${_formatVnd(item.unitPriceVnd)}' : ''}'
+                                '${item.conditionBeforeLaundry?.isNotEmpty == true ? '\nTình trạng trước khi giặt: ${item.conditionBeforeLaundry}' : ''}',
+                            value: item.totalVnd > 0
+                                ? _formatVnd(item.totalVnd)
+                                : '',
                           ),
                         ),
+                      ),
                       ...requestedServices.map(
                         (service) => Padding(
                           padding: const EdgeInsets.only(bottom: 12),
@@ -292,11 +295,12 @@ class _TrackingScreenState extends State<TrackingScreen> {
                   children: [
                     _SummaryRow(
                       label: 'Phương thức thanh toán',
-                      value: details.paymentMethod ?? 'Chưa ghi nhận',
+                      value: details.paymentMethod ?? 'Chưa chọn',
                     ),
                   ],
                 ),
-                if (widget.orderId != null && details.paymentMethod == 'Chuyển khoản')
+                if (widget.orderId != null &&
+                    details.paymentMethod == 'Chuyển khoản')
                   BankTransferQrPanel(
                     orderId: int.parse(widget.orderId!),
                     orderStatus: order.status,
@@ -323,18 +327,21 @@ class _TrackingScreenState extends State<TrackingScreen> {
                         'Cửa hàng sẽ báo giá sau khi kiểm nhận đồ.',
                         style: TextStyle(color: AppColors.textSecondary),
                       ),
-                    if (order.pickupMethod == 'Tại nhà')
+                    if (order.pickupMethod != null)
                       _SummaryRow(
-                        label: 'Phí nhận đồ · ${_formatDistance(order.pickupDistanceMeters)}',
+                        label:
+                            'Phí nhận đồ · ${_formatDistance(order.pickupDistanceMeters)}',
                         value: _formatVnd(order.pickupDeliveryFeeVnd),
                       ),
-                    if (order.deliveryMethod == 'Tại nhà')
+                    if (order.deliveryMethod != null)
                       _SummaryRow(
-                        label: 'Phí giao đồ · ${_formatDistance(order.deliveryDistanceMeters)}',
+                        label:
+                            'Phí giao đồ · ${_formatDistance(order.deliveryDistanceMeters)}',
                         value: _formatVnd(order.deliveryLegFeeVnd),
                       ),
                     if (details.deliveryFeeVnd > 0 &&
-                        order.pickupDeliveryFeeVnd + order.deliveryLegFeeVnd == 0)
+                        order.pickupDeliveryFeeVnd + order.deliveryLegFeeVnd ==
+                            0)
                       _SummaryRow(
                         label: 'Phí giao nhận',
                         value: _formatVnd(details.deliveryFeeVnd),

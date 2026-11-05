@@ -45,8 +45,20 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       widget.draft['paymentMethod'] as String? ?? 'Tiền mặt';
   String get _pickupMethod => widget.draft['pickupMethod'] as String;
   String get _deliveryMethod => widget.draft['deliveryMethod'] as String;
-  String? get _address => widget.draft['address'] as String?;
-  String? get _deliveryAddress => widget.draft['deliveryAddress'] as String?;
+  String? get _address {
+    final address = widget.draft['address'] as String?;
+    return _pickupMethod == 'Tại cửa hàng' &&
+            (address == null || address.trim().isEmpty)
+        ? laundryStoreAddress
+        : address;
+  }
+  String? get _deliveryAddress {
+    final address = widget.draft['deliveryAddress'] as String?;
+    return _deliveryMethod == 'Tại cửa hàng' &&
+            (address == null || address.trim().isEmpty)
+        ? laundryStoreAddress
+        : address;
+  }
   String? get _deliveryQuoteId => widget.draft['deliveryQuoteId'] as String?;
   DateTime get _appointment => widget.draft['appointment'] as DateTime;
   String get _notes => widget.draft['notes'] as String? ?? '';
@@ -95,8 +107,12 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
               _totalDiscountEstimateVnd)
           .clamp(0, _estimatedOrderTotalVnd + _totalDeliveryFeeVnd);
 
-  String _distanceLabel(num meters) =>
-      '${(meters / 1000).toStringAsFixed(1)} km';
+  String _distanceLabel(num meters) {
+    final km = meters / 1000;
+    return km == km.roundToDouble()
+        ? '${km.toStringAsFixed(0)} km'
+        : '${km.toStringAsFixed(1)} km';
+  }
 
   Future<void> _submitOrder() async {
     final appointmentError = ValidatorUtils.validateAppointment(_appointment);
@@ -263,18 +279,14 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                 _SummaryRow(label: 'Địa chỉ nhận đồ', value: _address!),
               if (_deliveryAddress != null)
                 _SummaryRow(label: 'Địa chỉ giao đồ', value: _deliveryAddress!),
-              if (_pickupMethod == 'Tại nhà')
-                _SummaryRow(
-                  label:
-                      'Phí nhận đồ · ${_distanceLabel(_pickupDistanceMeters)}',
-                  value: _formatVnd(_pickupDeliveryFeeVnd),
-                ),
-              if (_deliveryMethod == 'Tại nhà')
-                _SummaryRow(
-                  label:
-                      'Phí giao đồ · ${_distanceLabel(_deliveryDistanceMeters)}',
-                  value: _formatVnd(_deliveryFeeVnd),
-                ),
+              _SummaryRow(
+                label: 'Phí nhận đồ · ${_distanceLabel(_pickupDistanceMeters)}',
+                value: _formatVnd(_pickupDeliveryFeeVnd),
+              ),
+              _SummaryRow(
+                label: 'Phí giao đồ · ${_distanceLabel(_deliveryDistanceMeters)}',
+                value: _formatVnd(_deliveryFeeVnd),
+              ),
               _SummaryRow(
                 label: 'Lịch hẹn',
                 value: _formatDateTime(_appointment),
@@ -308,11 +320,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                   'Cửa hàng sẽ báo giá sau khi kiểm nhận đồ.',
                   style: TextStyle(color: AppColors.textSecondary),
                 ),
-              if (_totalDeliveryFeeVnd > 0)
-                _SummaryRow(
-                  label: 'Tổng phí giao nhận',
-                  value: _formatVnd(_totalDeliveryFeeVnd),
-                ),
+              _SummaryRow(
+                label: 'Tổng phí giao nhận',
+                value: _formatVnd(_totalDeliveryFeeVnd),
+              ),
               if (!_provideLaundryDetails) ...[
                 _SummaryRow(
                   label: 'Tổng tiền đơn hàng',
