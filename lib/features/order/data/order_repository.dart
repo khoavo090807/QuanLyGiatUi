@@ -348,6 +348,10 @@ class LaundryOrderRecord {
   factory LaundryOrderRecord.fromJson(Map<String, dynamic> json) {
     final details = json['ChiTietDonHang'] as List<dynamic>? ?? const [];
     final booking = json['Booking'] as Map<String, dynamic>?;
+    final delivery = (json['GiaoNhan'] as List<dynamic>? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .where((leg) => leg['LoaiGiaoNhan'] == 'GIAO_DO')
+        .firstOrNull;
     final items = _parseOrderItems(details);
     final descriptions = items.map(
       (item) =>
@@ -365,13 +369,21 @@ class LaundryOrderRecord {
       customerName: _asString((json['KhachHang'] as Map?)?['HoTen']),
       customerPhone: _asString((json['KhachHang'] as Map?)?['SoDienThoai']),
       canConfirmDelivery: json['CanConfirmDelivery'] == true,
-      pickupMethod: _asString(booking?['HinhThucNhanDo']),
-      deliveryMethod: _deliveryMethodOf(booking),
+      pickupMethod:
+          _asString(booking?['HinhThucNhanDo']) ??
+          (booking == null ? 'Tại cửa hàng' : null),
+      deliveryMethod:
+          _asString(delivery?['HinhThuc']) ??
+          _deliveryMethodOf(booking) ??
+          (booking == null ? 'Tại cửa hàng' : null),
       pickupAddress: _asString(booking?['DiaChiNhan']),
-      deliveryAddress: _deliveryAddressOf(booking),
+      deliveryAddress:
+          _asString(delivery?['DiaChi']) ?? _deliveryAddressOf(booking),
       appointment: _parseAppointment(booking?['NgayHen'], booking?['GioHen']),
       notes: _asString(booking?['GhiChu']),
-      paymentMethod: _asString(booking?['PhuongThucThanhToan']),
+      paymentMethod:
+          _asString(json['PhuongThucThanhToan']) ??
+          _asString(booking?['PhuongThucThanhToan']),
       items: items.isEmpty ? null : items,
       subtotalVnd: _asNum(json['TongTien']),
       pointsUsed: _asInt(json['DiemSuDung'] ?? booking?['DiemSuDung']) ?? 0,
