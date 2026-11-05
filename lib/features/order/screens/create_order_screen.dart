@@ -202,7 +202,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     if (condition != null && condition.isNotEmpty) notes.add(condition);
     return notes.isEmpty
         ? 'Không có điều kiện bổ sung'
-        : 'Điều kiện: ${notes.join(' : ')}';
+        : 'Điều kiện: ${notes.join(': ')}';
   }
 
   LoyaltyVoucher? _selectedEligibleVoucher(List<LoyaltyVoucher> vouchers) =>
@@ -220,7 +220,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     }
     final percent = '${voucher.discountValue.toStringAsFixed(0)}%';
     final cap = voucher.maximumDiscount;
-    return cap == null ? percent : '$percent : tối đa ${_formatVnd(cap)}';
+    return cap == null ? percent : '$percent: tối đa ${_formatVnd(cap)}';
   }
 
   Future<void> _showVoucherPicker(List<LoyaltyVoucher> vouchers) async {
@@ -286,7 +286,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                             ? 0
                             : minimum - _cartTotalMinorUnits / 100;
                         final condition = !eligible && minimum != null
-                            ? 'Cần mua thêm ${_formatVnd(remaining)} : ${_voucherCondition(voucher)}'
+                            ? 'Cần mua thêm ${_formatVnd(remaining)}: ${_voucherCondition(voucher)}'
                             : _voucherCondition(voucher);
                         final isBest =
                             eligible &&
@@ -406,7 +406,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                                 Text(
                                   vouchers.isEmpty
                                       ? 'Chưa có mã khuyến mãi khả dụng'
-                                      : '${vouchers.length} mã có sẵn : chạm để xem chi tiết',
+                                      : '${vouchers.length} mã có sẵn: chạm để xem chi tiết',
                                   style: AppTypography.bodySmall.copyWith(
                                     color: AppColors.textSecondary,
                                   ),
@@ -864,14 +864,14 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
               _deliveryFeeLegRow(
                 label: quote == null
                     ? 'Chặng nhận đồ'
-                    : 'Nhận đồ : ${_formatDistance(quote.pickupDistanceMeters)}',
+                    : 'Nhận đồ: ${_formatDistance(quote.pickupDistanceMeters)}',
                 feeVnd: quote?.pickupFeeVnd,
               ),
             if (_deliveryMethod == 'Tại nhà')
               _deliveryFeeLegRow(
                 label: quote == null
                     ? 'Chặng giao đồ'
-                    : 'Giao đồ : ${_formatDistance(quote.deliveryDistanceMeters)}',
+                    : 'Giao đồ: ${_formatDistance(quote.deliveryDistanceMeters)}',
                 feeVnd: quote?.deliveryFeeVnd,
               ),
             const SizedBox(height: 8),
@@ -1071,7 +1071,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                                                   CrossAxisAlignment.start,
                                               children: [
                                                 Text(
-                                                  '${price.serviceName} : ${price.itemTypeName}',
+                                                  '${price.serviceName}: ${price.itemTypeName}',
                                                   style: AppTypography.bodyText
                                                       .copyWith(
                                                         fontWeight:
@@ -1517,10 +1517,10 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                           Icons.local_laundry_service_outlined,
                         ),
                         title: Text(
-                          '${price.serviceName} : ${price.itemTypeName}',
+                          '${price.serviceName}: ${price.itemTypeName}',
                         ),
                         subtitle: Text(
-                          '0 ${price.unitSymbol} : '
+                          '0 ${price.unitSymbol}: '
                           '${FormatterUtils.formatVnd(price.unitPriceVnd)}/${price.unitSymbol}',
                         ),
                         trailing: IconButton(
@@ -1798,7 +1798,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   String _formatDateTime(DateTime value) {
     final local = value.toLocal();
     return '${local.day.toString().padLeft(2, '0')}/'
-        '${local.month.toString().padLeft(2, '0')}/${local.year} : '
+        '${local.month.toString().padLeft(2, '0')}/${local.year}: '
         '${local.hour.toString().padLeft(2, '0')}:'
         '${local.minute.toString().padLeft(2, '0')}';
   }
@@ -1975,7 +1975,7 @@ class _AddressInputState extends State<_AddressInput> {
             title: const Text('Đang dùng vị trí hiện tại'),
             subtitle: Text(
               '${location.latitude.toStringAsFixed(6)}, '
-              '${location.longitude.toStringAsFixed(6)} : '
+              '${location.longitude.toStringAsFixed(6)}: '
               'sai số ±${location.accuracyMeters.ceil()} m\n'
               'Bạn có thể sửa địa chỉ ở ô phía trên.',
             ),
@@ -2022,9 +2022,9 @@ class _CartItemTile extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
         leading: const Icon(Icons.local_laundry_service_outlined),
-        title: Text('${item.price.serviceName} : ${item.price.itemTypeName}'),
+        title: Text('${item.price.serviceName}: ${item.price.itemTypeName}'),
         subtitle: Text(
-          '${item.measurement} ${item.price.unitSymbol} : '
+          '${item.measurement} ${item.price.unitSymbol}: '
           '${FormatterUtils.formatVnd(item.price.unitPriceVnd)}/${item.price.unitSymbol}',
         ),
         trailing: IconButton(
@@ -2160,7 +2160,7 @@ class _PointsDiscountRow extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    'Dùng $pointsToUse điểm : còn ${availablePoints - pointsToUse} điểm',
+                    'Dùng $pointsToUse điểm: còn ${availablePoints - pointsToUse} điểm',
                     style: AppTypography.caption,
                   ),
                 ] else if (usePoints)

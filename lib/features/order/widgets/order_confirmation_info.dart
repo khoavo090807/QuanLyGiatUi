@@ -45,7 +45,7 @@ class OrderConfirmationInfo extends StatelessWidget {
                     padding: const EdgeInsets.only(bottom: 8),
                     child: _Row(
                       label:
-                          '${item.serviceName} : ${item.itemTypeName}\n'
+                          '${item.serviceName}: ${item.itemTypeName}\n'
                           '${item.measurement} ${item.unitSymbol}'
                           '${item.unitPriceVnd > 0 ? ' × ${_formatVnd(item.unitPriceVnd)}' : ''}',
                       value: item.totalVnd > 0 ? _formatVnd(item.totalVnd) : '',
@@ -200,7 +200,7 @@ class OrderConfirmationInfo extends StatelessWidget {
   String _formatDateTime(DateTime value) {
     final local = value.toLocal();
     return '${local.day.toString().padLeft(2, '0')}/'
-        '${local.month.toString().padLeft(2, '0')}/${local.year} : '
+        '${local.month.toString().padLeft(2, '0')}/${local.year}: '
         '${local.hour.toString().padLeft(2, '0')}:'
         '${local.minute.toString().padLeft(2, '0')}';
   }

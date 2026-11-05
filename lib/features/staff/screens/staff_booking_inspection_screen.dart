@@ -494,7 +494,7 @@ class _StaffBookingInspectionScreenState
     final unit = price['unit_symbol']?.toString().trim().isNotEmpty == true
         ? price['unit_symbol']
         : price['unit_name'];
-    return '$unit : ${_money(price['unit_price'])}';
+    return '$unit: ${_money(price['unit_price'])}';
   }
 
   String _money(dynamic value) => NumberFormat.currency(
@@ -1267,7 +1267,7 @@ class _StaffBookingInspectionScreenState
                           child: Text(
                             garment == null || garment.isEmpty
                                 ? service
-                                : '$service : $garment',
+                                : '$service: $garment',
                             style: const TextStyle(
                               color: AppColors.textSecondary,
                             ),
@@ -1361,7 +1361,7 @@ class _StaffBookingInspectionScreenState
     final text = km == km.roundToDouble()
         ? km.toStringAsFixed(0)
         : km.toStringAsFixed(1);
-    return ' : $text km';
+    return ': $text km';
   }
 
   num get _inspectionSubtotal => _lines.fold<num>(0, (total, line) {
@@ -1404,14 +1404,14 @@ class _StaffBookingInspectionScreenState
     if (condition.isNotEmpty) notes.add(condition);
     return notes.isEmpty
         ? 'Không có điều kiện bổ sung'
-        : 'Điều kiện: ${notes.join(' : ')}';
+        : 'Điều kiện: ${notes.join(': ')}';
   }
 
   String _voucherDiscountLabel(Map<String, dynamic> voucher) {
     if (voucher['type'] != 'Phần trăm') return _money(voucher['value']);
     final percent = '${(_asNum(voucher['value']) ?? 0).toStringAsFixed(0)}%';
     final maximum = _asNum(voucher['maximum']);
-    return maximum == null ? percent : '$percent : tối đa ${_money(maximum)}';
+    return maximum == null ? percent : '$percent: tối đa ${_money(maximum)}';
   }
 
   int get _pointsToUse {
@@ -1488,7 +1488,7 @@ class _StaffBookingInspectionScreenState
                             Text(
                               _vouchers.isEmpty
                                   ? 'Chưa có mã khuyến mãi khả dụng'
-                                  : '${_vouchers.length} mã có sẵn : chạm để xem chi tiết',
+                                  : '${_vouchers.length} mã có sẵn: chạm để xem chi tiết',
                               style: AppTypography.bodySmall.copyWith(
                                 color: AppColors.textSecondary,
                               ),
@@ -1582,7 +1582,7 @@ class _StaffBookingInspectionScreenState
                     ),
                   ),
                   Text(
-                    'Dùng $discount điểm : còn ${_availablePoints - discount} điểm',
+                    'Dùng $discount điểm: còn ${_availablePoints - discount} điểm',
                     style: AppTypography.caption,
                   ),
                 ] else if (_usePoints)
@@ -1673,7 +1673,7 @@ class _StaffBookingInspectionScreenState
                             ? 0
                             : minimum - _inspectionSubtotal;
                         final condition = !eligible && minimum != null
-                            ? 'Cần mua thêm ${_money(remaining)} : ${_voucherCondition(voucher)}'
+                            ? 'Cần mua thêm ${_money(remaining)}: ${_voucherCondition(voucher)}'
                             : _voucherCondition(voucher);
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 10),

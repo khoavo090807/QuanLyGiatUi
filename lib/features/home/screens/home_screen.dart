@@ -341,7 +341,7 @@ class HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Đơn #${order.orderNumber} : ${order.lineDescription}',
+                    'Đơn #${order.orderNumber}: ${order.lineDescription}',
                     style: AppTypography.bodySmall.copyWith(
                       color: Colors.white.withValues(alpha: 0.9),
                     ),

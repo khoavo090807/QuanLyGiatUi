@@ -370,7 +370,7 @@ class LaundryOrderRecord {
     if (deliveryMethod != null) {
       methods.add('Hình thức nhân viên giao đồ: $deliveryMethod');
     }
-    return methods.isEmpty ? null : methods.join(' : ');
+    return methods.isEmpty ? null : methods.join(': ');
   }
 
   factory LaundryOrderRecord.fromJson(Map<String, dynamic> json) {
@@ -388,7 +388,7 @@ class LaundryOrderRecord {
     final items = _parseOrderItems(details);
     final descriptions = items.map(
       (item) =>
-          '${item.serviceName} : ${item.itemTypeName} : '
+          '${item.serviceName}: ${item.itemTypeName}: '
           '${item.measurement} ${item.unitSymbol}',
     );
     final promotion =
@@ -459,7 +459,7 @@ class LaundryOrderRecord {
     final descriptions = items
         .map(
           (item) =>
-              '${item.serviceName} : ${item.itemTypeName} : '
+              '${item.serviceName}: ${item.itemTypeName}: '
               '${item.measurement} ${item.unitSymbol}',
         )
         .toList();
