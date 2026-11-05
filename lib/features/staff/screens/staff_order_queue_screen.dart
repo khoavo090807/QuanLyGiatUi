@@ -634,7 +634,7 @@ class _StaffOrderCard extends StatelessWidget {
           if (order.customerName?.isNotEmpty == true) ...[
             const SizedBox(height: 6),
             Text(
-              'Khách: ${order.customerName}${order.customerPhone?.isNotEmpty == true ? ' · ${order.customerPhone}' : ''}',
+              'Khách: ${order.customerName}${order.customerPhone?.isNotEmpty == true ? ' : ${order.customerPhone}' : ''}',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: AppTypography.bodySmall,
@@ -657,7 +657,7 @@ class _StaffOrderCard extends StatelessWidget {
           if (order.pickupMethod != null) ...[
             const SizedBox(height: 4),
             Text(
-              'Nhận: ${order.pickupMethod}${order.pickupAddress?.isNotEmpty == true ? ' · ${order.pickupAddress}' : ''}',
+              'Nhận: ${order.pickupMethod}${order.pickupAddress?.isNotEmpty == true ? ' : ${order.pickupAddress}' : ''}',
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: AppTypography.bodySmall,
@@ -666,7 +666,7 @@ class _StaffOrderCard extends StatelessWidget {
           if (order.deliveryMethod != null) ...[
             const SizedBox(height: 4),
             Text(
-              'Trả: ${order.deliveryMethod}${order.deliveryAddress?.isNotEmpty == true ? ' · ${order.deliveryAddress}' : ''}',
+              'Trả: ${order.deliveryMethod}${order.deliveryAddress?.isNotEmpty == true ? ' : ${order.deliveryAddress}' : ''}',
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: AppTypography.bodySmall,

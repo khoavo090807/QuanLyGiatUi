@@ -231,7 +231,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
             const SizedBox(height: 8),
             Text(
               '${review.isMixedOrder ? 'Đơn hỗn hợp' : 'Đơn dịch vụ'}'
-              '${review.orderCode == null ? '' : ' · ${review.orderCode}'}',
+              '${review.orderCode == null ? '' : ' : ${review.orderCode}'}',
               style: AppTypography.bodySmall.copyWith(
                 color: AppColors.primary,
                 fontWeight: FontWeight.w700,

@@ -50,7 +50,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
   String _formatDateTime(DateTime value) {
     final local = value.toLocal();
     return '${local.day.toString().padLeft(2, '0')}/'
-        '${local.month.toString().padLeft(2, '0')}/${local.year} · '
+        '${local.month.toString().padLeft(2, '0')}/${local.year} : '
         '${local.hour.toString().padLeft(2, '0')}:'
         '${local.minute.toString().padLeft(2, '0')}';
   }
@@ -142,8 +142,8 @@ class _TrackingScreenState extends State<TrackingScreen> {
               ? details.requestedServices
                     .map(
                       (service) =>
-                          '${service.serviceName} · ${service.itemTypeName}'
-                          '${service.unitSymbol.isEmpty ? '' : ' · ${service.unitSymbol}'}',
+                          '${service.serviceName} : ${service.itemTypeName}'
+                          '${service.unitSymbol.isEmpty ? '' : ' : ${service.unitSymbol}'}',
                     )
                     .toList(growable: false)
               : unspecifiedServices;
@@ -330,13 +330,13 @@ class _TrackingScreenState extends State<TrackingScreen> {
                     if (order.pickupMethod != null)
                       _SummaryRow(
                         label:
-                            'Phí nhận đồ · ${_formatDistance(order.pickupDistanceMeters)}',
+                            'Phí nhận đồ : ${_formatDistance(order.pickupDistanceMeters)}',
                         value: _formatVnd(order.pickupDeliveryFeeVnd),
                       ),
                     if (order.deliveryMethod != null)
                       _SummaryRow(
                         label:
-                            'Phí giao đồ · ${_formatDistance(order.deliveryDistanceMeters)}',
+                            'Phí giao đồ : ${_formatDistance(order.deliveryDistanceMeters)}',
                         value: _formatVnd(order.deliveryLegFeeVnd),
                       ),
                     if (details.deliveryFeeVnd > 0 &&

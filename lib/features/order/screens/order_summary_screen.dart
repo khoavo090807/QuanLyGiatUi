@@ -187,7 +187,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   String _formatDateTime(DateTime value) {
     final local = value.toLocal();
     return '${local.day.toString().padLeft(2, '0')}/'
-        '${local.month.toString().padLeft(2, '0')}/${local.year} · '
+        '${local.month.toString().padLeft(2, '0')}/${local.year} : '
         '${local.hour.toString().padLeft(2, '0')}:'
         '${local.minute.toString().padLeft(2, '0')}';
   }
@@ -238,7 +238,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                   padding: const EdgeInsets.only(bottom: 12),
                   child: _SummaryRow(
                     label:
-                        '${item.price.serviceName} · ${item.price.itemTypeName}\n'
+                        '${item.price.serviceName} : ${item.price.itemTypeName}\n'
                         '${item.measurement} ${item.price.unitSymbol} × '
                         '${_formatVnd(item.price.unitPriceVnd)}',
                     value: _formatVnd(item.estimatedTotalMinorUnits / 100),
@@ -250,7 +250,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                   padding: const EdgeInsets.only(bottom: 12),
                   child: _SummaryRow(
                     label:
-                        '${price.serviceName} · ${price.itemTypeName}\n'
+                        '${price.serviceName} : ${price.itemTypeName}\n'
                         'Chưa biết số lượng/khối lượng (${price.unitSymbol})',
                     value: 'Chưa báo giá',
                   ),
@@ -280,11 +280,11 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
               if (_deliveryAddress != null)
                 _SummaryRow(label: 'Địa chỉ giao đồ', value: _deliveryAddress!),
               _SummaryRow(
-                label: 'Phí nhận đồ · ${_distanceLabel(_pickupDistanceMeters)}',
+                label: 'Phí nhận đồ : ${_distanceLabel(_pickupDistanceMeters)}',
                 value: _formatVnd(_pickupDeliveryFeeVnd),
               ),
               _SummaryRow(
-                label: 'Phí giao đồ · ${_distanceLabel(_deliveryDistanceMeters)}',
+                label: 'Phí giao đồ : ${_distanceLabel(_deliveryDistanceMeters)}',
                 value: _formatVnd(_deliveryFeeVnd),
               ),
               _SummaryRow(

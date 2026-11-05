@@ -202,7 +202,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     if (condition != null && condition.isNotEmpty) notes.add(condition);
     return notes.isEmpty
         ? 'Không có điều kiện bổ sung'
-        : 'Điều kiện: ${notes.join(' · ')}';
+        : 'Điều kiện: ${notes.join(' : ')}';
   }
 
   LoyaltyVoucher? _selectedEligibleVoucher(List<LoyaltyVoucher> vouchers) =>
@@ -220,7 +220,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     }
     final percent = '${voucher.discountValue.toStringAsFixed(0)}%';
     final cap = voucher.maximumDiscount;
-    return cap == null ? percent : '$percent · tối đa ${_formatVnd(cap)}';
+    return cap == null ? percent : '$percent : tối đa ${_formatVnd(cap)}';
   }
 
   Future<void> _showVoucherPicker(List<LoyaltyVoucher> vouchers) async {
@@ -286,7 +286,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                             ? 0
                             : minimum - _cartTotalMinorUnits / 100;
                         final condition = !eligible && minimum != null
-                            ? 'Cần mua thêm ${_formatVnd(remaining)} · ${_voucherCondition(voucher)}'
+                            ? 'Cần mua thêm ${_formatVnd(remaining)} : ${_voucherCondition(voucher)}'
                             : _voucherCondition(voucher);
                         final isBest =
                             eligible &&
@@ -406,7 +406,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                                 Text(
                                   vouchers.isEmpty
                                       ? 'Chưa có mã khuyến mãi khả dụng'
-                                      : '${vouchers.length} mã có sẵn · chạm để xem chi tiết',
+                                      : '${vouchers.length} mã có sẵn : chạm để xem chi tiết',
                                   style: AppTypography.bodySmall.copyWith(
                                     color: AppColors.textSecondary,
                                   ),
@@ -864,14 +864,14 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
               _deliveryFeeLegRow(
                 label: quote == null
                     ? 'Chặng nhận đồ'
-                    : 'Nhận đồ · ${_formatDistance(quote.pickupDistanceMeters)}',
+                    : 'Nhận đồ : ${_formatDistance(quote.pickupDistanceMeters)}',
                 feeVnd: quote?.pickupFeeVnd,
               ),
             if (_deliveryMethod == 'Tại nhà')
               _deliveryFeeLegRow(
                 label: quote == null
                     ? 'Chặng giao đồ'
-                    : 'Giao đồ · ${_formatDistance(quote.deliveryDistanceMeters)}',
+                    : 'Giao đồ : ${_formatDistance(quote.deliveryDistanceMeters)}',
                 feeVnd: quote?.deliveryFeeVnd,
               ),
             const SizedBox(height: 8),
@@ -1004,11 +1004,15 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                                   price.priceId,
                                 );
                                 Future<void> editQuantity() async {
-                                  final value = await showDialog<int>(
+                                  final value = await showDialog<num>(
                                     context: context,
                                     builder: (_) => _QuantityInputDialog(
-                                      initialQuantity: quantity.round(),
+                                      initialQuantity: quantity,
                                       unitSymbol: price.unitSymbol,
+                                      allowDecimal: const {
+                                        'kg',
+                                        'kilogram',
+                                      }.contains(price.unitSymbol.toLowerCase()),
                                     ),
                                   );
                                   if (value != null) {
@@ -1067,7 +1071,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                                                   CrossAxisAlignment.start,
                                               children: [
                                                 Text(
-                                                  '${price.serviceName} · ${price.itemTypeName}',
+                                                  '${price.serviceName} : ${price.itemTypeName}',
                                                   style: AppTypography.bodyText
                                                       .copyWith(
                                                         fontWeight:
@@ -1513,10 +1517,10 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                           Icons.local_laundry_service_outlined,
                         ),
                         title: Text(
-                          '${price.serviceName} · ${price.itemTypeName}',
+                          '${price.serviceName} : ${price.itemTypeName}',
                         ),
                         subtitle: Text(
-                          '0 ${price.unitSymbol} · '
+                          '0 ${price.unitSymbol} : '
                           '${FormatterUtils.formatVnd(price.unitPriceVnd)}/${price.unitSymbol}',
                         ),
                         trailing: IconButton(
@@ -1794,7 +1798,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   String _formatDateTime(DateTime value) {
     final local = value.toLocal();
     return '${local.day.toString().padLeft(2, '0')}/'
-        '${local.month.toString().padLeft(2, '0')}/${local.year} · '
+        '${local.month.toString().padLeft(2, '0')}/${local.year} : '
         '${local.hour.toString().padLeft(2, '0')}:'
         '${local.minute.toString().padLeft(2, '0')}';
   }
@@ -1971,7 +1975,7 @@ class _AddressInputState extends State<_AddressInput> {
             title: const Text('Đang dùng vị trí hiện tại'),
             subtitle: Text(
               '${location.latitude.toStringAsFixed(6)}, '
-              '${location.longitude.toStringAsFixed(6)} · '
+              '${location.longitude.toStringAsFixed(6)} : '
               'sai số ±${location.accuracyMeters.ceil()} m\n'
               'Bạn có thể sửa địa chỉ ở ô phía trên.',
             ),
@@ -2018,9 +2022,9 @@ class _CartItemTile extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
         leading: const Icon(Icons.local_laundry_service_outlined),
-        title: Text('${item.price.serviceName} · ${item.price.itemTypeName}'),
+        title: Text('${item.price.serviceName} : ${item.price.itemTypeName}'),
         subtitle: Text(
-          '${item.measurement} ${item.price.unitSymbol} · '
+          '${item.measurement} ${item.price.unitSymbol} : '
           '${FormatterUtils.formatVnd(item.price.unitPriceVnd)}/${item.price.unitSymbol}',
         ),
         trailing: IconButton(
@@ -2156,7 +2160,7 @@ class _PointsDiscountRow extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    'Dùng $pointsToUse điểm · còn ${availablePoints - pointsToUse} điểm',
+                    'Dùng $pointsToUse điểm : còn ${availablePoints - pointsToUse} điểm',
                     style: AppTypography.caption,
                   ),
                 ] else if (usePoints)
@@ -2214,10 +2218,12 @@ class _QuantityInputDialog extends StatefulWidget {
   const _QuantityInputDialog({
     required this.initialQuantity,
     required this.unitSymbol,
+    required this.allowDecimal,
   });
 
-  final int initialQuantity;
+  final num initialQuantity;
   final String unitSymbol;
+  final bool allowDecimal;
 
   @override
   State<_QuantityInputDialog> createState() => _QuantityInputDialogState();
@@ -2240,9 +2246,21 @@ class _QuantityInputDialogState extends State<_QuantityInputDialog> {
   }
 
   void _submit() {
-    final quantity = int.tryParse(_controller.text.trim());
-    if (quantity == null || quantity < 0 || quantity > 99999999) {
-      setState(() => _error = 'Nhập số nguyên từ 0 đến 99.999.999.');
+    final input = _controller.text.trim().replaceAll(',', '.');
+    final quantity = widget.allowDecimal
+        ? num.tryParse(input)
+        : int.tryParse(input);
+    if (quantity == null ||
+        !quantity.isFinite ||
+        quantity < 0 ||
+        quantity > 99999999.99 ||
+        (!widget.allowDecimal && quantity != quantity.truncate()) ||
+        (widget.allowDecimal && quantity != (quantity * 100).round() / 100)) {
+      setState(
+        () => _error = widget.allowDecimal
+            ? 'Nhập khối lượng từ 0 đến 99.999.999,99 kg (tối đa 2 số thập phân).'
+            : 'Nhập số nguyên từ 0 đến 99.999.999.',
+      );
       return;
     }
     Navigator.pop(context, quantity);
@@ -2250,13 +2268,15 @@ class _QuantityInputDialogState extends State<_QuantityInputDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-    title: const Text('Nhập số lượng'),
+    title: Text(widget.allowDecimal ? 'Nhập khối lượng' : 'Nhập số lượng'),
     content: TextField(
       controller: _controller,
       autofocus: true,
-      keyboardType: TextInputType.number,
+      keyboardType: TextInputType.numberWithOptions(
+        decimal: widget.allowDecimal,
+      ),
       decoration: InputDecoration(
-        labelText: 'Số lượng',
+        labelText: widget.allowDecimal ? 'Khối lượng' : 'Số lượng',
         suffixText: widget.unitSymbol,
         errorText: _error,
       ),

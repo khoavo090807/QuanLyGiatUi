@@ -74,7 +74,7 @@ class _LaundryItemTypeDetailScreenState
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Đã thêm ${price.serviceName} · ${price.itemTypeName} vào giỏ.',
+            'Đã thêm ${price.serviceName} : ${price.itemTypeName} vào giỏ.',
           ),
         ),
       );
