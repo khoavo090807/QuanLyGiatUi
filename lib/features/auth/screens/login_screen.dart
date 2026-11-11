@@ -246,17 +246,19 @@ class _LoginScreenState extends State<LoginScreen> {
                     style: AppTypography.caption,
                   ),
                 ],
-                const SizedBox(height: 24),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(AppStrings.noAccount, style: AppTypography.bodyText),
-                    TextButton(
-                      onPressed: () => context.pushNamed(AppRoutes.register),
-                      child: const Text(AppStrings.register),
-                    ),
-                  ],
-                ),
+                if (!_isStaffLogin) ...[
+                  const SizedBox(height: 24),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(AppStrings.noAccount, style: AppTypography.bodyText),
+                      TextButton(
+                        onPressed: () => context.pushNamed(AppRoutes.register),
+                        child: const Text(AppStrings.register),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),

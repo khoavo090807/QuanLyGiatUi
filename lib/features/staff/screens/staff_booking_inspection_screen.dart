@@ -1608,10 +1608,23 @@ class _StaffBookingInspectionScreenState
   }
 
   Future<void> _showVoucherPicker() async {
+    final vouchers = List<Map<String, dynamic>>.from(_vouchers)
+      ..sort(
+        (a, b) => _voucherDiscount(b).compareTo(_voucherDiscount(a)),
+      );
     String? selectedCode = _vouchers
         .where((voucher) => _asInt(voucher['id']) == _selectedPromotionId)
         .map((voucher) => voucher['code']?.toString())
         .firstOrNull;
+    final bestVoucher = _vouchers
+        .where(_isVoucherEligible)
+        .fold<Map<String, dynamic>?>(
+          null,
+          (best, voucher) => best == null ||
+                  _voucherDiscount(voucher) > _voucherDiscount(best)
+              ? voucher
+              : best,
+        );
     final selected = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
@@ -1664,7 +1677,7 @@ class _StaffBookingInspectionScreenState
                   child: ListView(
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
                     children: [
-                      ..._vouchers.map((voucher) {
+                      ...vouchers.map((voucher) {
                         final id = _asInt(voucher['id']);
                         if (id == null) return const SizedBox.shrink();
                         final eligible = _isVoucherEligible(voucher);
@@ -1685,10 +1698,7 @@ class _StaffBookingInspectionScreenState
                             selected:
                                 voucher['code']?.toString() == selectedCode,
                             eligible: eligible,
-                            best:
-                                eligible &&
-                                _vouchers.isNotEmpty &&
-                                id == _asInt(_vouchers.first['id']),
+                            best: id == _asInt(bestVoucher?['id']),
                             savingAmount: eligible
                                 ? _voucherDiscount(voucher)
                                 : null,

@@ -220,7 +220,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
                           padding: const EdgeInsets.only(bottom: 12),
                           child: _SummaryRow(
                             label:
-                                '${item.serviceName} (${item.itemTypeName})\n'
+                                '${item.serviceName}: ${item.itemTypeName}\n'
                                 '${item.measurement} ${item.unitSymbol}'
                                 '${item.unitPriceVnd > 0 ? ' × ${_formatVnd(item.unitPriceVnd)}' : ''}'
                                 '${item.conditionBeforeLaundry?.isNotEmpty == true ? '\nTình trạng trước khi giặt: ${item.conditionBeforeLaundry}' : ''}',

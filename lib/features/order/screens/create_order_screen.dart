@@ -227,6 +227,15 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     String? selectedCode = _promotionController.text.isEmpty
         ? null
         : _promotionController.text;
+    final bestVoucher = vouchers
+        .where(_isVoucherEligible)
+        .fold<LoyaltyVoucher?>(
+          null,
+          (best, voucher) => best == null ||
+                  _promotionDiscount(voucher) > _promotionDiscount(best)
+              ? voucher
+              : best,
+        );
     final code = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
@@ -288,10 +297,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                         final condition = !eligible && minimum != null
                             ? 'Cần mua thêm ${_formatVnd(remaining)}: ${_voucherCondition(voucher)}'
                             : _voucherCondition(voucher);
-                        final isBest =
-                            eligible &&
-                            vouchers.isNotEmpty &&
-                            voucher.id == vouchers.first.id;
+                        final isBest = voucher.id == bestVoucher?.id;
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 10),
                           child: _VoucherOptionCard(
