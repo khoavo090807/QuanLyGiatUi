@@ -1293,6 +1293,12 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     final deliveryQuote = await _ensureDeliveryQuote();
     if (!mounted) return;
     if (_hasHomeDeliveryLeg && deliveryQuote == null) return;
+    final paymentMethod = _finalTotal(vouchers) > 10_000 * 100
+        ? _paymentMethod
+        : 'Tiền mặt';
+    if (paymentMethod != _paymentMethod) {
+      setState(() => _paymentMethod = paymentMethod);
+    }
     final updatedAppointmentError = ValidatorUtils.validateAppointment(
       _appointment,
     );
@@ -1334,7 +1340,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
             )
             .whereType<LaundryPriceOption>()
             .toList(growable: false),
-        'paymentMethod': _paymentMethod,
+        'paymentMethod': paymentMethod,
         'pickupMethod': _pickupMethod,
         'deliveryMethod': _deliveryMethod,
         'address': _pickupMethod == 'Tại nhà' ? _pickupAddress : null,
@@ -1409,6 +1415,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
           final selectedVoucher = _selectedEligibleVoucher(vouchers);
           final pointsToUse = _pointsToUseAfterPromotion(selectedVoucher);
           final pointsDiscount = _pointsDiscountAfterPromotion(selectedVoucher);
+          final canUseBankTransfer = _finalTotal(vouchers) > 10_000 * 100;
           final initialServiceId = widget.initialPriceId == null
               ? null
               : allPrices
@@ -1721,33 +1728,6 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                   const SizedBox(height: 16),
                   _deliveryFeeEstimate(),
                 ],
-                const SizedBox(height: 20),
-                Text('Hình thức thanh toán', style: AppTypography.heading3),
-                const SizedBox(height: 12),
-                SegmentedButton<String>(
-                  segments: const [
-                    ButtonSegment(
-                      value: 'Tiền mặt',
-                      icon: Icon(Icons.payments_outlined),
-                      label: Text('Tiền mặt'),
-                    ),
-                    ButtonSegment(
-                      value: 'Chuyển khoản',
-                      icon: Icon(Icons.account_balance_outlined),
-                      label: Text('Chuyển khoản'),
-                    ),
-                  ],
-                  selected: {_paymentMethod},
-                  onSelectionChanged: (selection) {
-                    setState(() => _paymentMethod = selection.first);
-                  },
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Hình thức thanh toán đã chọn sẽ được dùng khi hóa đơn sẵn sàng; '
-                  'số tiền cuối cùng được xác nhận sau khi cửa hàng kiểm nhận.',
-                  style: TextStyle(color: AppColors.textSecondary),
-                ),
                 if (_provideLaundryDetails && _cart.isNotEmpty) ...[
                   const SizedBox(height: 22),
                   _voucherSection(vouchers),
@@ -1774,6 +1754,40 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                   onPressed: _chooseAppointment,
                   icon: const Icon(Icons.calendar_month_outlined),
                   label: Text('Lịch hẹn: ${_formatDateTime(_appointment)}'),
+                ),
+                const SizedBox(height: 20),
+                Text('Hình thức thanh toán', style: AppTypography.heading3),
+                const SizedBox(height: 12),
+                SegmentedButton<String>(
+                  segments: [
+                    ButtonSegment(
+                      value: 'Tiền mặt',
+                      icon: Icon(Icons.payments_outlined),
+                      label: Text('Tiền mặt'),
+                    ),
+                    ButtonSegment(
+                      value: 'Chuyển khoản',
+                      icon: Icon(Icons.account_balance_outlined),
+                      label: Text('Chuyển khoản'),
+                      enabled: canUseBankTransfer,
+                    ),
+                  ],
+                  selected: {canUseBankTransfer ? _paymentMethod : 'Tiền mặt'},
+                  onSelectionChanged: (selection) {
+                    if (selection.first == 'Chuyển khoản' &&
+                        !canUseBankTransfer) {
+                      return;
+                    }
+                    setState(() => _paymentMethod = selection.first);
+                  },
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  canUseBankTransfer
+                      ? 'Hình thức thanh toán đã chọn sẽ được dùng khi hóa đơn sẵn sàng; '
+                            'số tiền cuối cùng được xác nhận sau khi cửa hàng kiểm nhận.'
+                      : 'Chỉ chọn được chuyển khoản khi tổng thanh toán lớn hơn 10.000 đ.',
+                  style: const TextStyle(color: AppColors.textSecondary),
                 ),
                 const SizedBox(height: 24),
                 Text('Ghi chú xử lý', style: AppTypography.heading3),

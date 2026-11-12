@@ -178,8 +178,10 @@ class _StaffBookingInspectionScreenState
       'scheduled_time': _appointmentTime,
       'notes': _note.text.trim(),
       'items': items,
-      'promotion_id': _selectedPromotionId,
-      'points_used': _usePoints ? _availablePoints : 0,
+      'promotion_id': _selectedEligibleVoucher == null
+          ? null
+          : _selectedPromotionId,
+      'points_used': _usePoints ? _pointsToUse : 0,
       if (includeConsent) 'customer_agreed': _customerAgreed,
     };
   }
@@ -407,9 +409,12 @@ class _StaffBookingInspectionScreenState
     }
     setState(() => _isSaving = true);
     try {
+      final clearPromotion =
+          _selectedPromotionId != null && _selectedEligibleVoucher == null;
       await _repository.saveDraft(widget.bookingId, _payload());
       if (!mounted) return;
       setState(() {
+        if (clearPromotion) _selectedPromotionId = null;
         _draftSaved = true;
         _customerAgreed = false;
       });
