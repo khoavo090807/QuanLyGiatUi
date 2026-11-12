@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:app_quanly_giaiui/core/config/supabase_config.dart';
+import 'package:app_quanly_giaiui/core/utils/validator_utils.dart';
 import 'package:app_quanly_giaiui/features/splash/screens/splash_screen.dart';
 import 'package:app_quanly_giaiui/features/onboarding/screens/onboarding_screen.dart';
 import 'package:app_quanly_giaiui/features/auth/data/auth_repository.dart';
@@ -42,6 +43,7 @@ class AppRouter {
   static final rootNavigatorKey = GlobalKey<NavigatorState>();
   static final _authRefreshListenable = _AuthRefreshListenable();
   static List<String>? _cachedRoles;
+  static bool? _customerPhoneMissing;
 
   static String defaultRouteForRoles(List<String> roles) {
     return AppRoutes.homePath;
@@ -83,6 +85,7 @@ class AppRouter {
         builder: (context, state) => SplashScreen(
           resolveRoute: () async {
             if (StaffApiAuthRepository.instance.isSignedIn) {
+              _customerPhoneMissing = null;
               return AppRoutes.staffQueuePath;
             }
             final repository = AuthRepository();
@@ -93,6 +96,12 @@ class AppRouter {
               await repository.signOut();
               return AppRoutes.loginPath;
             }
+            _customerPhoneMissing =
+                ValidatorUtils.validatePhone(
+                  (await repository.getCurrentProfile())?.phone,
+                ) !=
+                null;
+            if (_customerPhoneMissing!) return AppRoutes.editProfilePath;
             return defaultRouteForRoles(roles);
           },
         ),
@@ -330,7 +339,9 @@ class AppRouter {
         name: AppRoutes.editProfile,
         builder: (context, state) => StaffApiAuthRepository.instance.isSignedIn
             ? const StaffEditProfileScreen()
-            : const EditProfileScreen(),
+            : EditProfileScreen(
+                requiredForPhone: _customerPhoneMissing == true,
+              ),
       ),
     ],
     // Handle error routes
@@ -390,6 +401,18 @@ class AppRouter {
       return AppRoutes.splashPath;
     }
 
+    if (isSignedIn &&
+        _customerPhoneMissing == null &&
+        path != AppRoutes.splashPath) {
+      return AppRoutes.splashPath;
+    }
+    if (isSignedIn &&
+        _customerPhoneMissing == true &&
+        path != AppRoutes.editProfilePath &&
+        path != AppRoutes.splashPath) {
+      return AppRoutes.editProfilePath;
+    }
+
     if (path == AppRoutes.splashPath) {
       return isSignedIn ? null : AppRoutes.loginPath;
     }
@@ -439,6 +462,7 @@ class _AuthRefreshListenable extends ChangeNotifier {
   _AuthRefreshListenable() {
     _staffAuthListener = () {
       AppRouter._cachedRoles = null;
+      AppRouter._customerPhoneMissing = null;
       notifyListeners();
     };
     StaffApiAuthRepository.authRevision.addListener(_staffAuthListener);
@@ -447,6 +471,9 @@ class _AuthRefreshListenable extends ChangeNotifier {
         authState,
       ) {
         AppRouter._cachedRoles = null;
+        if (authState.event != AuthChangeEvent.tokenRefreshed) {
+          AppRouter._customerPhoneMissing = null;
+        }
         if (authState.event == AuthChangeEvent.passwordRecovery) {
           // Navigate after OTP verification finishes to avoid re-entering
           // GoRouter while Supabase is updating the auth state.

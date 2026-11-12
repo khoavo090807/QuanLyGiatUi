@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:app_quanly_giaiui/features/auth/data/staff_api_auth_repository.dart';
 import 'package:app_quanly_giaiui/core/config/supabase_config.dart';
+import 'package:app_quanly_giaiui/core/utils/validator_utils.dart';
 import 'package:app_quanly_giaiui/features/notification/services/notification_service.dart';
 
 class AuthRepository {
@@ -360,15 +361,26 @@ class AuthRepository {
     String? email,
     String? phone,
     String? address,
-  }) => _client.rpc(
-    'update_customer_profile',
-    params: {
-      'p_full_name': fullName.trim(),
-      'p_email': email?.trim(),
-      'p_phone': phone?.trim(),
-      'p_address': address?.trim(),
-    },
-  );
+  }) async {
+    final phoneError = ValidatorUtils.validatePhone(phone);
+    if (phoneError != null) throw FormatException(phoneError);
+    try {
+      await _client.rpc(
+        'update_customer_profile',
+        params: {
+          'p_full_name': fullName.trim(),
+          'p_email': email?.trim(),
+          'p_phone': phone?.trim(),
+          'p_address': address?.trim(),
+        },
+      );
+    } on PostgrestException catch (error) {
+      if (error.code == '23505') {
+        throw const FormatException('Số điện thoại này đã được sử dụng.');
+      }
+      rethrow;
+    }
+  }
 
   Future<String> uploadAvatar(Uint8List bytes, String extension) async {
     final user = _client.auth.currentUser;

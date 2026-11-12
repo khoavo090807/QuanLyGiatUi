@@ -70,8 +70,15 @@ class OrderConfirmationInfo extends StatelessWidget {
       lightText: lightText,
       children: [
         _Row(label: 'Hình thức', value: paymentMethod, lightText: lightText),
+        _Row(
+          label: 'Tình trạng hóa đơn',
+          value: details.invoiceStatus ?? 'Chưa có hóa đơn',
+          lightText: lightText,
+        ),
         Text(
-          details.paymentMethod == null
+          details.invoiceStatus != null
+              ? 'Tình trạng hóa đơn được cập nhật khi cửa hàng ghi nhận thanh toán.'
+              : details.paymentMethod == null
               ? 'Chưa có hình thức thanh toán được ghi nhận.'
               : 'Thanh toán sẽ được thực hiện khi cửa hàng hoàn tất kiểm nhận '
                     'và hóa đơn được tạo.',
@@ -297,6 +304,7 @@ extension LaundryOrderRecordDetails on LaundryOrderRecord {
       pickupMethod: pickupMethod,
       deliveryMethod: deliveryMethod,
       paymentMethod: paymentMethod,
+      invoiceStatus: invoiceStatus,
       address: pickupAddress,
       deliveryAddress: deliveryAddress,
       appointment: appointment,

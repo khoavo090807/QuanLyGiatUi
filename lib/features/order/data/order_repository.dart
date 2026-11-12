@@ -297,6 +297,7 @@ class LaundryOrderRecord {
     this.appointment,
     this.notes,
     this.paymentMethod,
+    this.invoiceStatus,
     this.items,
     this.subtotalVnd,
     this.pointsUsed = 0,
@@ -336,6 +337,7 @@ class LaundryOrderRecord {
   final DateTime? appointment;
   final String? notes;
   final String? paymentMethod;
+  final String? invoiceStatus;
   final List<LaundryOrderItem>? items;
   final num? subtotalVnd;
   final int pointsUsed;
@@ -420,6 +422,7 @@ class LaundryOrderRecord {
           _asString(json['PhuongThucThanhToan']) ??
           _asString(booking?['PhuongThucThanhToan']) ??
           _paymentMethodFromOrderNote(json['GhiChu']),
+      invoiceStatus: _asString(json['TrangThaiHoaDon']),
       items: items.isEmpty ? null : items,
       subtotalVnd: _asNum(json['TongTien']),
       pointsUsed: _asInt(json['DiemSuDung'] ?? booking?['DiemSuDung']) ?? 0,
@@ -572,6 +575,7 @@ class LaundryOrderDetails {
     this.pickupMethod,
     this.deliveryMethod,
     this.paymentMethod,
+    this.invoiceStatus,
     String? address,
     String? deliveryAddress,
     this.appointment,
@@ -598,6 +602,7 @@ class LaundryOrderDetails {
   final String? pickupMethod;
   final String? deliveryMethod;
   final String? paymentMethod;
+  final String? invoiceStatus;
   final String? address;
   final String? deliveryAddress;
   final DateTime? appointment;

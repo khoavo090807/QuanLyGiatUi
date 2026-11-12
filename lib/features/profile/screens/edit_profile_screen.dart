@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:app_quanly_giaiui/core/navigation/app_routes.dart';
 import 'package:app_quanly_giaiui/features/auth/data/auth_repository.dart';
 import 'package:app_quanly_giaiui/core/utils/validator_utils.dart';
 
 class EditProfileScreen extends StatefulWidget {
-  const EditProfileScreen({super.key});
+  const EditProfileScreen({this.requiredForPhone = false, super.key});
+
+  final bool requiredForPhone;
   @override
   State<EditProfileScreen> createState() => _EditProfileScreenState();
 }
@@ -104,11 +108,23 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         phone: _phoneController.text,
         address: _address,
       );
-      if (mounted) Navigator.pop(context);
+      if (mounted) {
+        if (widget.requiredForPhone) {
+          context.go(AppRoutes.splashPath);
+        } else {
+          Navigator.pop(context);
+        }
+      }
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Không thể cập nhật hồ sơ: $error')),
+          SnackBar(
+            content: Text(
+              error is FormatException
+                  ? error.message.toString()
+                  : 'Không thể cập nhật hồ sơ: $error',
+            ),
+          ),
         );
       }
     } finally {
@@ -124,83 +140,92 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Chỉnh sửa hồ sơ')),
-    body: _loading
-        ? const Center(child: CircularProgressIndicator())
-        : _loadError != null
-        ? Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(_loadError!),
-                TextButton(
-                  onPressed: () => _load(retry: true),
-                  child: const Text('Thử tải lại'),
-                ),
-              ],
-            ),
-          )
-        : Form(
-            key: _formKey,
-            child: ListView(
-              padding: const EdgeInsets.all(20),
-              children: [
-                Center(
-                  child: Stack(
-                    children: [
-                      CircleAvatar(
-                        radius: 48,
-                        backgroundImage: _avatarUrl == null
-                            ? null
-                            : NetworkImage(_avatarUrl!),
-                        child: _avatarUrl == null
-                            ? const Icon(Icons.person, size: 48)
-                            : null,
-                      ),
-                      Positioned(
-                        right: 0,
-                        bottom: 0,
-                        child: IconButton.filled(
-                          onPressed: _saving ? null : _pickAvatar,
-                          icon: const Icon(Icons.photo_camera_outlined),
+  Widget build(BuildContext context) => PopScope(
+    canPop: !widget.requiredForPhone,
+    child: Scaffold(
+      appBar: AppBar(
+        automaticallyImplyLeading: !widget.requiredForPhone,
+        title: const Text('Chỉnh sửa hồ sơ'),
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _loadError != null
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(_loadError!),
+                  TextButton(
+                    onPressed: () => _load(retry: true),
+                    child: const Text('Thử tải lại'),
+                  ),
+                ],
+              ),
+            )
+          : Form(
+              key: _formKey,
+              child: ListView(
+                padding: const EdgeInsets.all(20),
+                children: [
+                  Center(
+                    child: Stack(
+                      children: [
+                        CircleAvatar(
+                          radius: 48,
+                          backgroundImage: _avatarUrl == null
+                              ? null
+                              : NetworkImage(_avatarUrl!),
+                          child: _avatarUrl == null
+                              ? const Icon(Icons.person, size: 48)
+                              : null,
                         ),
-                      ),
-                    ],
+                        Positioned(
+                          right: 0,
+                          bottom: 0,
+                          child: IconButton.filled(
+                            onPressed: _saving ? null : _pickAvatar,
+                            icon: const Icon(Icons.photo_camera_outlined),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 24),
-                TextFormField(
-                  controller: _name,
-                  decoration: const InputDecoration(labelText: 'Họ và tên'),
-                  validator: (value) => value == null || value.trim().isEmpty
-                      ? 'Vui lòng nhập họ tên'
-                      : null,
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _phoneController,
-                  keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(labelText: 'Số điện thoại'),
-                  validator: ValidatorUtils.validatePhone,
-                ),
-              ],
+                  const SizedBox(height: 24),
+                  TextFormField(
+                    controller: _name,
+                    decoration: const InputDecoration(labelText: 'Họ và tên'),
+                    validator: (value) => value == null || value.trim().isEmpty
+                        ? 'Vui lòng nhập họ tên'
+                        : null,
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _phoneController,
+                    keyboardType: TextInputType.phone,
+                    decoration: const InputDecoration(
+                      labelText: 'Số điện thoại (bắt buộc)',
+                      helperText: 'Số di động Việt Nam, ví dụ 0912345678',
+                    ),
+                    validator: ValidatorUtils.validatePhone,
+                  ),
+                ],
+              ),
             ),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: FilledButton(
+            onPressed: _saving ? null : _save,
+            child: _saving
+                ? const SizedBox.square(
+                    dimension: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Text('Lưu thay đổi'),
           ),
-    bottomNavigationBar: SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: FilledButton(
-          onPressed: _saving ? null : _save,
-          child: _saving
-              ? const SizedBox.square(
-                  dimension: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
-                  ),
-                )
-              : const Text('Lưu thay đổi'),
         ),
       ),
     ),

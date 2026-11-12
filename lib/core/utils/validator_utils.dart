@@ -23,7 +23,9 @@ class ValidatorUtils {
         : compact.startsWith('84')
         ? '0${compact.substring(2)}'
         : compact;
-    if (!RegExp(r'^0[35789][0-9]{8}$').hasMatch(localNumber)) {
+    if (!RegExp(
+      r'^0(?:3[2-9]|5[25689]|7[0-9]|8[1-9]|9[0-9])[0-9]{7}$',
+    ).hasMatch(localNumber)) {
       return 'Số điện thoại không hợp lệ';
     }
 
