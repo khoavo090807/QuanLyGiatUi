@@ -321,6 +321,7 @@ class LaundryOrderRecord {
     this.customerPhone,
     this.canConfirmDelivery = false,
     this.isCompletedBooking = false,
+    this.hasReceivedFullPayment = false,
   }) : pickupAddress =
            pickupAddress ??
            (pickupMethod == 'Tại cửa hàng' ? laundryStoreAddress : null),
@@ -361,8 +362,15 @@ class LaundryOrderRecord {
   final String? customerPhone;
   final bool canConfirmDelivery;
   final bool isCompletedBooking;
+  final bool hasReceivedFullPayment;
 
   bool get isHomeDelivery => deliveryMethod == 'Tại nhà' || canConfirmDelivery;
+
+  bool get isAwaitingBankTransferPayment =>
+      (paymentMethod == 'Chuyển khoản' || paymentMethod == 'Chuyển khoản / QR') &&
+      !hasReceivedFullPayment &&
+      invoiceStatus != 'Đã thanh toán' &&
+      status != 'Đã thanh toán';
 
   String? get logisticsSummary {
     final methods = <String>[];
@@ -404,6 +412,7 @@ class LaundryOrderRecord {
       customerName: _asString((json['KhachHang'] as Map?)?['HoTen']),
       customerPhone: _asString((json['KhachHang'] as Map?)?['SoDienThoai']),
       canConfirmDelivery: json['CanConfirmDelivery'] == true,
+      hasReceivedFullPayment: json['DaThanhToanDu'] == true,
       pickupMethod:
           _asString(booking?['HinhThucNhanDo']) ??
           _asString(pickup?['HinhThuc']) ??
@@ -504,6 +513,7 @@ class LaundryOrderRecord {
       appointment: _parseAppointment(json['NgayHen'], json['GioHen']),
       notes: _asString(json['GhiChu']),
       paymentMethod: _asString(json['PhuongThucThanhToan']),
+      hasReceivedFullPayment: linkedOrder?['DaThanhToanDu'] == true,
       items: items.isEmpty ? null : items,
       subtotalVnd:
           _asNum(linkedOrder?['TongTien']) ??

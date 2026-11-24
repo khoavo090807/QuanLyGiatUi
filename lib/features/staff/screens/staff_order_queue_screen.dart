@@ -217,15 +217,16 @@ class _StaffOrderQueueScreenState extends State<StaffOrderQueueScreen> {
   }
 
   List<String> _nextStatuses(LaundryOrderRecord order) {
-    return switch (order.status) {
+    final List<String> statuses = switch (order.status) {
       'Chờ tiếp nhận' => ['Đã tiếp nhận', 'Đã hủy'],
       'Đã tiếp nhận' => ['Đang giặt', 'Đã hủy'],
       'Đang giặt' => ['Hoàn thành giặt'],
       'Hoàn thành giặt' =>
         order.isHomeDelivery ? ['Đang giao'] : ['Đang giao', 'Đã giao'],
       'Đang giao' => ['Đã giao'],
-      _ => const [],
+      _ => <String>[],
     };
+    return statuses;
   }
 
   List<LaundryOrderRecord> _ordersForTab(

@@ -21,6 +21,25 @@ class _StaffDeliveryConfirmationScreenState
   bool _isSubmitting = false;
 
   Future<void> _confirmDelivered() async {
+    if (widget.order.isAwaitingBankTransferPayment) {
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Đơn hàng chưa được thanh toán'),
+          content: const Text(
+            'Vui lòng yêu cầu khách hàng thanh toán chuyển khoản đầy đủ trước khi xác nhận đã giao đồ.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Đã hiểu'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
