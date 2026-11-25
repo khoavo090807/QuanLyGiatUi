@@ -52,7 +52,10 @@ class _StaffDeliveryConfirmationScreenState
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Kiểm tra lại'),
+            style: TextButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.error,
+            ),
+            child: const Text('Hủy'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),

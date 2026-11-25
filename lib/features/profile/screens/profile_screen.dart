@@ -6,6 +6,7 @@ import 'package:app_quanly_giaiui/core/theme/app_colors.dart';
 import 'package:app_quanly_giaiui/core/theme/app_typography.dart';
 import 'package:app_quanly_giaiui/features/auth/data/auth_repository.dart';
 import 'package:app_quanly_giaiui/features/auth/data/staff_api_auth_repository.dart';
+import 'package:app_quanly_giaiui/features/assistant/data/customer_assistant_preferences.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key, this.showAppBar = true});
@@ -173,6 +174,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
             onTap: () => context.pushNamed(AppRoutes.vouchers),
           ),
         ]),
+        if (!isStaff) ...[
+          const SizedBox(height: 16),
+          ValueListenableBuilder<bool>(
+            valueListenable: CustomerAssistantPreferences.enabled,
+            builder: (context, enabled, child) => Container(
+              color: AppColors.surface,
+              child: SwitchListTile(
+                secondary: const Icon(
+                  Icons.smart_toy_outlined,
+                  color: AppColors.textSecondary,
+                ),
+                title: const Text('Trợ lý AI'),
+                subtitle: const Text('Hiện nút trợ lý trên màn hình khách hàng'),
+                value: enabled,
+                onChanged: CustomerAssistantPreferences.setEnabled,
+              ),
+            ),
+          ),
+        ],
         const SizedBox(height: 16),
         _buildMenuGroup([
           _MenuItem(

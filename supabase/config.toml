@@ -10,6 +10,9 @@ verify_jwt = true
 [functions.chat-encryption]
 verify_jwt = false
 
+[functions.customer-ai-assistant]
+verify_jwt = true
+
 [api]
 enabled = true
 # Port to use for the API URL.

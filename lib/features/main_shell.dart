@@ -1,9 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:app_quanly_giaiui/core/constants/app_strings.dart';
 import 'package:app_quanly_giaiui/core/navigation/app_routes.dart';
 import 'package:app_quanly_giaiui/core/theme/app_colors.dart';
 import 'package:app_quanly_giaiui/features/auth/data/auth_repository.dart';
+import 'package:app_quanly_giaiui/features/auth/data/staff_api_auth_repository.dart';
+import 'package:app_quanly_giaiui/features/assistant/data/customer_assistant_preferences.dart';
+import 'package:app_quanly_giaiui/features/assistant/widgets/customer_assistant_overlay.dart';
 import 'package:app_quanly_giaiui/features/history/screens/history_screen.dart';
 import 'package:app_quanly_giaiui/features/home/screens/home_screen.dart';
 import 'package:app_quanly_giaiui/features/notification/screens/notification_screen.dart';
@@ -53,6 +59,11 @@ class _MainShellState extends State<MainShell> {
     super.initState();
     _selectedIndex = widget.initialIndex;
     _rolesFuture = _authRepository.getCurrentRoles();
+    unawaited(
+      CustomerAssistantPreferences.load(
+        Supabase.instance.client.auth.currentUser?.id,
+      ),
+    );
     MainShell.tabRequests.addListener(_onTabRequest);
   }
 
@@ -104,6 +115,7 @@ class _MainShellState extends State<MainShell> {
       builder: (context, snapshot) {
         final roles = snapshot.data ?? const <String>[];
         final isStaff = _hasStaffRole(roles);
+        final isCustomer = roles.contains('Khách hàng');
         _isStaff = isStaff;
         final selectedIndex = isStaff
             ? 0
@@ -164,7 +176,22 @@ class _MainShellState extends State<MainShell> {
               ];
 
         return Scaffold(
-          body: IndexedStack(index: selectedIndex, children: screens),
+          body: Stack(
+            children: [
+              IndexedStack(index: selectedIndex, children: screens),
+              if (isCustomer &&
+                  !isStaff &&
+                  !StaffApiAuthRepository.instance.isSignedIn)
+                ValueListenableBuilder<bool>(
+                  valueListenable: CustomerAssistantPreferences.enabled,
+                  builder: (context, enabled, child) => enabled
+                      ? const Positioned.fill(
+                          child: CustomerAssistantOverlay(),
+                        )
+                      : const SizedBox.shrink(),
+                ),
+            ],
+          ),
           bottomNavigationBar: isStaff
               ? null
               : Container(
